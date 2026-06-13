@@ -1,0 +1,21 @@
+{
+  "name": "coingecko-mcp-server",
+  "version": "0.1.0",
+  "description": "Market data for 15,000+ cryptocurrencies — prices, history, trends, and deep coin metadata via CoinGecko.",
+  "author": {
+    "name": "cyanheads"
+  },
+  "homepage": "https://github.com/cyanheads/coingecko-mcp-server#readme",
+  "repository": "https://github.com/cyanheads/coingecko-mcp-server",
+  "license": "Apache-2.0",
+  "mcpServers": {
+    "coingecko-mcp-server": {
+      "command": "npx",
+      "args": ["-y", "@cyanheads/coingecko-mcp-server"],
+      "env": {
+        "MCP_TRANSPORT_TYPE": "stdio",
+        "COINGECKO_API_KEY": ""
+      }
+    }
+  }
+}

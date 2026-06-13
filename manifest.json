@@ -1,0 +1,36 @@
+{
+  "manifest_version": "0.3",
+  "name": "coingecko-mcp-server",
+  "version": "0.1.0",
+  "description": "Market data for 15,000+ cryptocurrencies — prices, history, trends, and deep coin metadata via CoinGecko.",
+  "author": { "name": "cyanheads" },
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "MCP_TRANSPORT_TYPE": "stdio",
+        "MCP_AUTH_MODE": "none",
+        "NODE_ENV": "production",
+        "COINGECKO_API_KEY": "${user_config.coingecko_api_key}"
+      }
+    }
+  },
+  "compatibility": {
+    "runtimes": { "node": ">=24.0.0" }
+  },
+  "tools_generated": true,
+  "prompts_generated": true,
+  "user_config": {
+    "coingecko_api_key": {
+      "type": "string",
+      "title": "CoinGecko API Key",
+      "description": "Optional CoinGecko Demo API key for a higher rate ceiling (10k/mo, 100 rpm vs. the shared keyless pool). Leave blank to run keyless. Generate one at https://www.coingecko.com/en/api/pricing.",
+      "required": false,
+      "sensitive": true,
+      "default": ""
+    }
+  }
+}

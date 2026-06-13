@@ -1,0 +1,25 @@
+{
+  "name": "coingecko-mcp-server",
+  "version": "0.1.0",
+  "description": "Market data for 15,000+ cryptocurrencies — prices, history, trends, and deep coin metadata via CoinGecko.",
+  "author": {
+    "name": "cyanheads",
+    "email": "casey@caseyjhand.com",
+    "url": "https://github.com/cyanheads"
+  },
+  "homepage": "https://github.com/cyanheads/coingecko-mcp-server#readme",
+  "repository": "https://github.com/cyanheads/coingecko-mcp-server",
+  "license": "Apache-2.0",
+  "keywords": ["mcp", "mcp-server", "model-context-protocol", "coingecko", "cryptocurrency", "crypto"],
+  "mcpServers": "./.codex-plugin/mcp.json",
+  "interface": {
+    "displayName": "coingecko-mcp-server",
+    "shortDescription": "Market data for 15,000+ cryptocurrencies — prices, history, trends, and deep coin metadata via CoinGecko.",
+    "longDescription": "Cryptocurrency market data via the CoinGecko v3 REST API — live prices, ranked markets, historical series, trending, global macro stats, and deep coin metadata. Keyless by default; an optional Demo API key raises the rate ceiling. STDIO or Streamable HTTP.",
+    "developerName": "cyanheads",
+    "category": "finance",
+    "capabilities": ["Read"],
+    "websiteURL": "https://github.com/cyanheads/coingecko-mcp-server",
+    "defaultPrompt": []
+  }
+}
