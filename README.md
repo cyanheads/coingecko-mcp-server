@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>coingecko-mcp-server</h1>
+  <h1>@cyanheads/coingecko-mcp-server</h1>
   <p><b>Market data for 15,000+ cryptocurrencies — prices, history, trends, and deep coin metadata via CoinGecko.</b>
   <div>8 Tools • 2 Resources • 1 Prompt</div>
   </p>

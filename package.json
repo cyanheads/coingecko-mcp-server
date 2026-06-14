@@ -1,6 +1,6 @@
 {
   "name": "@cyanheads/coingecko-mcp-server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "mcpName": "io.github.cyanheads/coingecko-mcp-server",
   "description": "Market data for 15,000+ cryptocurrencies — prices, history, trends, and deep coin metadata via CoinGecko.",
   "type": "module",
