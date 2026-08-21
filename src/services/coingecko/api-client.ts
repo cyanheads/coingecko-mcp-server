@@ -87,7 +87,7 @@ export class CoinGeckoApiClient {
     signal: AbortSignal | undefined,
   ): Promise<T | null> {
     try {
-      const response = await this.fetch(operation, path, query, signal);
+      const response = await this.fetch(operation, path, query, signal, [404]);
       return await this.parseJson<T>(response, path);
     } catch (error: unknown) {
       if (error instanceof McpError && error.code === JsonRpcErrorCode.NotFound) return null;
@@ -100,19 +100,26 @@ export class CoinGeckoApiClient {
    * non-OK status; we enrich it with the contract `reason` + recovery so clients
    * get the same actionable hint a handler-level `ctx.fail` would carry. A raw
    * network/timeout failure (no `McpError`) maps to `upstream_unreachable`.
+   * `expectedStatuses` lists statuses the caller treats as an expected outcome —
+   * they still throw unchanged but log at debug instead of error.
    */
   private async fetch(
     operation: string,
     path: string,
     query: Record<string, QueryValue> | undefined,
     signal: AbortSignal | undefined,
+    expectedStatuses?: number[],
   ): Promise<Response> {
     const url = this.buildUrl(path, query);
-    const ctx = requestContextService.createRequestContext({ operation, path });
+    const ctx = requestContextService.createRequestContext({
+      operation,
+      additionalContext: { path },
+    });
     try {
       return await fetchWithTimeout(url, this.config.timeoutMs, ctx, {
         headers: this.headers(),
         ...(signal && { signal }),
+        ...(expectedStatuses && { expectedStatuses }),
       });
     } catch (error: unknown) {
       if (error instanceof McpError) throw this.enrich(error, path);
