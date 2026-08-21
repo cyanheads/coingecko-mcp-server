@@ -1,10 +1,10 @@
 # Developer Protocol
 
 **Server:** coingecko-mcp-server
-**Version:** 0.1.1
-**Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core) `^0.10.6`
+**Version:** 0.1.2
+**Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core) `^0.12.3`
 **Engines:** Bun ≥1.3.0, Node ≥24.0.0
-**MCP SDK:** `@modelcontextprotocol/sdk` ^1.29.0
+**MCP SDK:** `@modelcontextprotocol/server` ^2.0.0
 **Zod:** ^4.4.3
 
 > **Read the framework docs first:** `node_modules/@cyanheads/mcp-ts-core/CLAUDE.md` contains the full API reference — builders, Context, error codes, exports, patterns. This file covers server-specific conventions only.
@@ -181,7 +181,6 @@ Display identity is the machine name on every surface — `name` and `title` are
 await createApp({
   name: 'coingecko-mcp-server',
   title: 'coingecko-mcp-server',               // display name = the machine name, always
-  websiteUrl: 'https://github.com/cyanheads/coingecko-mcp-server',
   instructions:                                // session-level context, sent on every initialize
     'Cryptocurrency market data from CoinGecko. Data is keyed by slug (bitcoin), NOT ticker (BTC) — resolve names/tickers with coingecko_search_coins FIRST, then chain the id. Data refreshes ~every 60s. Runs keyless by default. Data provided by CoinGecko.',
   // ...tools, resources, prompts, setup()

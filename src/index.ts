@@ -23,7 +23,6 @@ import { initCoinGeckoService } from './services/coingecko/coingecko-service.js'
 await createApp({
   name: 'coingecko-mcp-server',
   title: 'coingecko-mcp-server',
-  websiteUrl: 'https://github.com/cyanheads/coingecko-mcp-server',
   tools: [
     searchCoinsTool,
     getPricesTool,
