@@ -20,7 +20,7 @@ export const listMarketsTool = tool('coingecko_list_markets', {
   errors: [
     {
       reason: 'unknown_category',
-      code: JsonRpcErrorCode.InvalidParams,
+      code: JsonRpcErrorCode.NotFound,
       when: 'A category was supplied but the result was empty — the slug is not recognized upstream (CoinGecko returns empty rather than erroring on a bad category).',
       recovery: 'List valid slugs with coingecko_list_categories and pass the category_id exactly.',
     },

@@ -8,7 +8,7 @@
  */
 
 import type { Context } from '@cyanheads/mcp-ts-core';
-import { invalidParams } from '@cyanheads/mcp-ts-core/errors';
+import { notFound } from '@cyanheads/mcp-ts-core/errors';
 import { logger, requestContextService, withRetry } from '@cyanheads/mcp-ts-core/utils';
 
 import { getServerConfig } from '@/config/server-config.js';
@@ -426,7 +426,7 @@ export class CoinGeckoService {
    * Unlike most endpoints, `/global` has no `vs_currency` param — it returns every
    * supported currency and the key is selected client-side, so an unsupported
    * currency is NOT rejected upstream. Throws a typed `unsupported_currency`
-   * (InvalidParams) when the requested key is absent rather than fabricating a
+   * (NotFound) when the requested key is absent rather than fabricating a
    * `0` total (which would misreport the entire market as worthless).
    */
   async global(currency: string, ctx: Context): Promise<GlobalMarket> {
@@ -436,7 +436,7 @@ export class CoinGeckoService {
     const d = raw.data ?? {};
     const totalMarketCap = d.total_market_cap?.[currency];
     if (typeof totalMarketCap !== 'number') {
-      throw invalidParams(`CoinGecko does not report global totals in "${currency}".`, {
+      throw notFound(`CoinGecko does not report global totals in "${currency}".`, {
         reason: 'unsupported_currency',
         currency,
         recovery: {
@@ -488,8 +488,7 @@ export function initCoinGeckoService(): void {
     'CoinGecko service initialized.',
     requestContextService.createRequestContext({
       operation: 'CoinGeckoInit',
-      hasApiKey: !!config.apiKey,
-      timeoutMs: TIMEOUT_MS,
+      additionalContext: { hasApiKey: !!config.apiKey, timeoutMs: TIMEOUT_MS },
     }),
   );
 }

@@ -53,7 +53,7 @@ export const getMarketChartTool = tool('coingecko_get_market_chart', {
     },
     {
       reason: 'invalid_range',
-      code: JsonRpcErrorCode.InvalidParams,
+      code: JsonRpcErrorCode.ValidationError,
       when: 'Mode/parameter mismatch — range mode without both from and to, or recent mode without days.',
       recovery: 'For mode=recent pass days; for mode=range pass both from and to as Unix seconds.',
     },

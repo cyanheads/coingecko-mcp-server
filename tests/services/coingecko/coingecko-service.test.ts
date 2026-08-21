@@ -330,7 +330,7 @@ describe('global', () => {
       }),
     );
     await expect(makeService().global('notacurrency', ctx)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.InvalidParams,
+      code: JsonRpcErrorCode.NotFound,
       data: { reason: 'unsupported_currency' },
     });
   });

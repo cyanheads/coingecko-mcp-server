@@ -135,7 +135,7 @@ describe('coingecko_list_markets', () => {
     const ctx = createMockContext({ errors: listMarketsTool.errors });
     const input = listMarketsTool.input.parse({ category: 'not-a-real-category' });
     await expect(listMarketsTool.handler(input, ctx)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.InvalidParams,
+      code: JsonRpcErrorCode.NotFound,
       data: { reason: 'unknown_category' },
     });
   });
@@ -275,7 +275,7 @@ describe('coingecko_get_market_chart', () => {
     const ctx = createMockContext({ errors: getMarketChartTool.errors });
     const input = getMarketChartTool.input.parse({ id: 'bitcoin', mode: 'range' });
     await expect(getMarketChartTool.handler(input, ctx)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.InvalidParams,
+      code: JsonRpcErrorCode.ValidationError,
       data: { reason: 'invalid_range' },
     });
   });
