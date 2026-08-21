@@ -1,6 +1,6 @@
 {
   "name": "coingecko-mcp-server",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Market data for 15,000+ cryptocurrencies — prices, history, trends, and deep coin metadata via CoinGecko.",
   "author": {
     "name": "cyanheads"

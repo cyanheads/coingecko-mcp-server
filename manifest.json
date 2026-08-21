@@ -1,7 +1,8 @@
 {
   "manifest_version": "0.3",
   "name": "coingecko-mcp-server",
-  "version": "0.1.1",
+  "version": "0.1.2",
+  "license": "Apache-2.0",
   "description": "Market data for 15,000+ cryptocurrencies — prices, history, trends, and deep coin metadata via CoinGecko.",
   "author": { "name": "cyanheads" },
   "repository": { "type": "git", "url": "https://github.com/cyanheads/coingecko-mcp-server" },
