@@ -33,7 +33,7 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 const STATUS_CODE: Record<number, JsonRpcErrorCode> = {
   404: JsonRpcErrorCode.NotFound,
   429: JsonRpcErrorCode.RateLimited,
-  500: JsonRpcErrorCode.InternalError,
+  500: JsonRpcErrorCode.ServiceUnavailable,
   503: JsonRpcErrorCode.ServiceUnavailable,
 };
 
@@ -426,7 +426,7 @@ describe('api-client HTTP error classification', () => {
     await expect(
       client().getJsonOrNull('op', '/coins/x', undefined, undefined),
     ).rejects.toMatchObject({
-      code: JsonRpcErrorCode.InternalError,
+      code: JsonRpcErrorCode.ServiceUnavailable,
       data: { reason: 'upstream_unreachable' },
     });
   });

@@ -17,6 +17,8 @@ import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 /**
  * Failure modes the CoinGecko service layer surfaces. Tools spread these into
  * their own `errors[]` so the declared contract matches what reaches the wire.
+ * Each entry is `thrownBy: 'service'` — no handler names these reasons in a
+ * `ctx.fail`, so `error-contract-unthrown` skips them.
  */
 export const COINGECKO_SERVICE_ERRORS = [
   {
@@ -26,6 +28,7 @@ export const COINGECKO_SERVICE_ERRORS = [
     recovery:
       'Wait a few seconds and retry; set COINGECKO_API_KEY for a higher rate ceiling on bursty workflows.',
     retryable: true,
+    thrownBy: 'service',
   },
   {
     reason: 'upstream_unreachable',
@@ -33,6 +36,7 @@ export const COINGECKO_SERVICE_ERRORS = [
     when: 'CoinGecko was unreachable or returned a 5xx/HTML error after all retry attempts.',
     recovery: 'Retry after a brief delay; CoinGecko was unreachable across all retry attempts.',
     retryable: true,
+    thrownBy: 'service',
   },
   {
     reason: 'invalid_response',
@@ -41,6 +45,7 @@ export const COINGECKO_SERVICE_ERRORS = [
     recovery:
       'Retry the request; CoinGecko returned a malformed response that could not be parsed.',
     retryable: true,
+    thrownBy: 'service',
   },
 ] as const;
 

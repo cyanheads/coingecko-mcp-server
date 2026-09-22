@@ -24,6 +24,7 @@ export const getGlobalTool = tool('coingecko_get_global', {
       code: JsonRpcErrorCode.NotFound,
       when: 'The requested vs_currency is absent from the /global per-currency maps — /global has no upstream vs_currency validation, so an unknown code returns no totals.',
       recovery: 'Use a supported currency code (e.g. "usd", "eur", "btc").',
+      thrownBy: 'service',
     },
     ...COINGECKO_SERVICE_ERRORS,
   ],
