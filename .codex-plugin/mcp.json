@@ -3,8 +3,8 @@
     "command": "npx",
     "args": ["-y", "@cyanheads/coingecko-mcp-server"],
     "env": {
-      "MCP_TRANSPORT_TYPE": "stdio",
-      "COINGECKO_API_KEY": ""
-    }
+      "MCP_TRANSPORT_TYPE": "stdio"
+    },
+    "env_vars": ["COINGECKO_API_KEY"]
   }
 }
