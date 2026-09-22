@@ -19,17 +19,13 @@
 
 </div>
 
-<div align="center">
-
-**Keyless by default · runs locally.** No API key required — an optional CoinGecko Demo key raises the rate ceiling. Runs as a local stdio/HTTP server; there is no public hosted instance, since CoinGecko's terms do not permit redistributing their data. Data provided by [CoinGecko](https://www.coingecko.com/).
-
-</div>
-
 ---
 
-## Tools
+## Overview
 
-Eight tools covering the crypto market-data spine — slug resolution first, then prices, ranked markets, deep coin profiles, historical series, trending, and global macro stats. CoinGecko keys all data by **slug** (`bitcoin`, `ethereum`), not ticker (`BTC`, `ETH`), so `coingecko_search_coins` is the entry point that feeds every ID-keyed tool.
+Cryptocurrency market data from CoinGecko — prices, rankings, historical charts, and deep coin profiles across 15,000+ coins. Resolve a name or ticker to CoinGecko's slug-keyed ID, then chain into price lookups, ranked markets, and trend charts. Runs as a stdio process or a local Streamable HTTP server.
+
+### Tools
 
 | Tool | Description |
 |:---|:---|
@@ -42,89 +38,121 @@ Eight tools covering the crypto market-data spine — slug resolution first, the
 | `coingecko_get_global` | Global crypto market snapshot — total market cap and volume, BTC/ETH dominance, active counts, ongoing ICOs, 24h change. |
 | `coingecko_list_categories` | Coin categories (`category_id` + display name) — the valid slugs for `coingecko_list_markets`'s `category` filter. |
 
-### `coingecko_search_coins`
+### Resources
 
-Resolve a name or ticker to the CoinGecko slug every other tool keys on.
-
-- Tickers are not unique (many coins share `ETH`/`USDC`) — returns ranked candidates with `id`, `symbol`, `name`, and `market_cap_rank` to disambiguate
-- Returns the top 25 matches by relevance; discloses truncation when the list is capped
-- An empty result is a normal outcome (not an error), with guidance to broaden the query
-
----
-
-### `coingecko_get_prices`
-
-Current price and core market stats (market cap, 24h volume, 24h change) for a batch of coins in a batch of currencies.
-
-- Batch-friendly — pass a whole portfolio of up to 250 slugs in one call
-- One row per `(id, currency)` that returned a price
-- A wrong/unknown slug returns an empty `200` upstream rather than an error; this tool diffs requested-vs-returned ids and lists the gaps in a `missing` field, so a typo reads as "unresolved", not "nonexistent"
-- Unsupported currency codes are silently dropped upstream and surfaced as a notice
-- Throws `all_missing` only when **no** requested id resolved
-
----
-
-### `coingecko_list_markets`
-
-The entry point for "top 20 DeFi coins" or "biggest gainers today".
-
-- Sort by market cap, volume, or 24h price change (ascending or descending)
-- Optional category filter — pass a `category_id` from `coingecko_list_categories`
-- Pagination via `page` and `per_page` (up to 250 rows); discloses when a page is full
-- Per-coin market fields: price, cap, volume, 1h/24h/7d change, supply, ATH/ATL
-- Detects an unrecognized category (CoinGecko returns empty rather than erroring) and maps it to `unknown_category`
-
----
-
-### `coingecko_get_coin`
-
-The full picture for "tell me everything about Ethereum".
-
-- Six sections — `profile`, `market`, `links`, `developer`, `community`, `sentiment`; pass `sections` to fetch only what you need (the full record is large)
-- Market figures denominated in a chosen `vs_currency`
-- `categories` here are display names (e.g. `"Layer 1 (L1)"`), distinct from the `category_id` slugs returned by `coingecko_list_categories`
-- Upstream is sparse — absent fields are omitted rather than fabricated
-
----
-
-### `coingecko_get_market_chart`
-
-Historical series for trend and charting questions (use `coingecko_get_prices` for the current snapshot).
-
-- `recent` mode: last N days, with granularity auto-scaling by span (≤1 day → ~5-min, 2–90 → hourly, >90 → daily); pass `days` (or `"max"`)
-- `range` mode: an explicit window via `from`/`to` as Unix **seconds**
-- Returns timestamped point arrays for price, market cap, and volume
-- Chart timestamps are Unix **milliseconds** (note: `coingecko_get_prices` last-updated is in seconds)
-
----
-
-### `coingecko_get_trending`
-
-A heartbeat for "what's hot in crypto right now". No parameters.
-
-- Coins trending by 24-hour search volume, with rank, USD price, and 24h USD change
-- Upstream reports market cap and volume as pre-formatted display strings, not numbers — those are omitted rather than presented as numeric data
-
-## Resources and prompts
-
-| Type | Name | Description |
-|:---|:---|:---|
-| Resource | `coingecko://coin/{id}` | Deep coin record by slug — same data as `coingecko_get_coin` (full record, USD market figures). |
-| Resource | `coingecko://global` | Global crypto market snapshot — same data as `coingecko_get_global`. |
-| Prompt | `coingecko_coin_research` | Guides a full single-coin research pass through the search → get_coin → get_market_chart → get_global chain. |
+| Resource | Description |
+|:---|:---|
+| `coingecko://coin/{id}` | Deep coin record by slug — same data as `coingecko_get_coin` (full record, USD market figures). |
+| `coingecko://global` | Global crypto market snapshot — same data as `coingecko_get_global`. |
 
 All resource data is also reachable via tools — the resources mirror `coingecko_get_coin` and `coingecko_get_global` exactly, so tool-only clients lose nothing. Large collections (markets, categories) are not exposed as resources; use `coingecko_list_markets` and `coingecko_list_categories` instead.
 
+### Prompts
+
+| Prompt | Description |
+|:---|:---|
+| `coingecko_coin_research` | Guides a full single-coin research pass through the search → get_coin → get_market_chart → get_global chain. |
+
+## Capability reference
+
+### `coingecko_search_coins` <sub>tool</sub>
+
+- Tickers are not unique (many coins share `ETH`/`USDC`) — returns ranked candidates with `id`, `symbol`, `name`, and `marketCapRank` to disambiguate
+- Returns the top 25 matches by relevance; `enrichment.truncated` plus `shown`/`cap` disclose when the list is capped
+- An empty result is a normal outcome, not an error — `enrichment.notice` suggests broadening the query
+
+---
+
+### `coingecko_get_prices` <sub>tool</sub>
+
+- Batch up to 250 slugs across one or more currencies (`vs_currencies` defaults to `["usd"]`) in a single call
+- One row per `(id, currency)` that returned a price; market cap, 24h volume, and 24h change are optional per row
+- A wrong or unknown slug returns a silent empty response upstream rather than an error — `missing` lists unresolved ids so a typo reads as "unresolved," not "nonexistent"
+- Unsupported currency codes are silently dropped upstream and surfaced via `enrichment.notice`
+- `lastUpdatedAtUnixSec`, when present, is Unix seconds — `coingecko_get_market_chart`'s point timestamps are milliseconds
+- Throws `all_missing` only when no requested id resolves
+
+---
+
+### `coingecko_list_markets` <sub>tool</sub>
+
+- Sort by market cap, volume, or 24h price change, ascending or descending, via `order`
+- Optional `category` filter — pass a `categoryId` from `coingecko_list_categories`
+- Pagination via `page` and `per_page` (default 50, max 250 rows); `enrichment.truncated` discloses when a page fills
+- Per-coin fields include price, cap, volume, 1h/24h/7d change, supply, and ATH/ATL
+- Throws `unknown_category` when a category filter returns empty — CoinGecko returns empty rather than erroring on an unrecognized slug
+
+---
+
+### `coingecko_get_coin` <sub>tool</sub>
+
+- Six sections — `profile`, `market`, `links`, `developer`, `community`, `sentiment`; `sections` trims the response to just what's needed (the full record is large)
+- Market figures are denominated in `vs_currency` (defaults to `usd`)
+- `profile.categories` are display names (e.g. `"Layer 1 (L1)"`) — distinct from the `categoryId` slugs `coingecko_list_categories` returns
+- Sparse upstream fields are omitted rather than fabricated
+- Throws `coin_not_found` when the slug isn't recognized upstream
+
+---
+
+### `coingecko_get_market_chart` <sub>tool</sub>
+
+- `recent` mode: last N days (or `"max"`); granularity auto-scales by span — ≤1 day → ~5-min, 2–90 → hourly, >90 → daily
+- `range` mode: an explicit window via `from`/`to` as Unix seconds
+- Returns timestamped point arrays for price, market cap, and volume in `vs_currency` (defaults to `usd`)
+- Point timestamps are Unix milliseconds — `coingecko_get_prices`'s `lastUpdatedAtUnixSec` is seconds
+- Throws `invalid_range` on a mode/parameter mismatch, `coin_not_found` when the slug isn't recognized
+
+---
+
+### `coingecko_get_trending` <sub>tool</sub>
+
+- No parameters — 24-hour trending coins by search volume, each with `marketCapRank`, `priceUsd`, `priceBtc`, and `priceChangePercentage24hUsd` when available
+- Upstream reports market cap and volume as pre-formatted display strings, not numbers — those fields are omitted rather than presented as numeric data
+- `nftCount` reports the trending-NFT count upstream also returns; NFT detail itself isn't surfaced
+
+---
+
+### `coingecko_get_global` <sub>tool</sub>
+
+- No coin id needed — one call for the macro snapshot
+- `vs_currency` (default `usd`) scopes only total market cap and volume; dominance and the 24h change percentages are always USD-denominated upstream
+- Throws `unsupported_currency` when the requested currency has no entry in upstream's per-currency maps — `/global` has no upstream currency validation, so an unknown code silently returns no totals
+- Returns active-cryptocurrency and active-market counts, ongoing ICO count, and a Unix-second snapshot timestamp
+
+---
+
+### `coingecko_list_categories` <sub>tool</sub>
+
+- Optional `name_contains` filters the ~800-category list locally by whitespace-separated tokens — case- and punctuation-insensitive, every token must appear in the name
+- `enrichment.totalCount` reports the total category count before any local filter
+- Returned `categoryId` values are what `coingecko_list_markets`'s `category` param expects
+- A filter that matches nothing returns `enrichment.notice` suggesting an unfiltered browse instead
+
+---
+
+### `coingecko://coin/{id}` <sub>resource</sub>
+
+- Same data as `coingecko_get_coin`'s full record, always denominated in USD
+- `{id}` is a CoinGecko slug (e.g. `"bitcoin"`) — resolve tickers with `coingecko_search_coins`
+- Throws `coin_not_found` when the slug isn't recognized upstream
+
+---
+
+### `coingecko://global` <sub>resource</sub>
+
+- Same data as `coingecko_get_global`, always denominated in USD
+- No parameters
+
+---
+
+### `coingecko_coin_research` <sub>prompt</sub>
+
+- Argument: `coin` required — a name, ticker, or CoinGecko slug
+- Returns an assistant framing message plus a user message that walks the search → get_coin → get_market_chart → get_global chain
+
 ## Features
 
-Built on [`@cyanheads/mcp-ts-core`](https://www.npmjs.com/package/@cyanheads/mcp-ts-core):
-
-- Declarative tool, resource, and prompt definitions — single file per primitive, framework handles registration and validation
-- Unified error handling — handlers throw, framework catches, classifies, and formats
-- Pluggable auth: `none`, `jwt`, `oauth`
-- Swappable storage backends: `in-memory`, `filesystem`, `Supabase`, `Cloudflare KV/R2/D1`
-- Structured logging with optional OpenTelemetry tracing
-- STDIO and Streamable HTTP transports
+Built on [`@cyanheads/mcp-ts-core`](https://github.com/cyanheads/mcp-ts-core): stdio and Streamable HTTP transports, pluggable auth (`none` / `jwt` / `oauth`), swappable storage (`in-memory`, `filesystem`, `Supabase`, `Cloudflare KV/R2/D1`), structured logging with optional OpenTelemetry tracing.
 
 CoinGecko-specific:
 
@@ -138,7 +166,7 @@ Agent-friendly output:
 - Search-before-query enforced through descriptions — every ID-keyed tool states slugs-not-tickers and points back to `coingecko_search_coins`
 - Provenance and graceful degradation — `coingecko_get_prices` reports unresolved ids and dropped currencies instead of failing; truncation and applied filters are disclosed via enrichment
 - Units made explicit — timestamp fields document seconds vs. milliseconds so callers don't misread them
-- Required CoinGecko attribution carried on every tool, resource, and prompt output
+- Required CoinGecko attribution ships on every tool and resource output; the research prompt instructs the agent to attribute its findings the same way
 
 ## Getting started
 
@@ -205,11 +233,9 @@ MCP_TRANSPORT_TYPE=http MCP_HTTP_PORT=3010 bun run start:http
 # Server listens at http://localhost:3010/mcp
 ```
 
-Refer to "your MCP client configuration file" generically — different clients use different config paths and this server isn't client-specific.
-
 ### Prerequisites
 
-- [Bun v1.3.2](https://bun.sh/) or higher (or Node.js v24+).
+- [Bun v1.4.0](https://bun.sh/) or higher (or Node.js v24+).
 - No account or API key required to run. Optionally, a free [CoinGecko Demo API key](https://www.coingecko.com/en/api/pricing) for a higher rate ceiling (10k calls/month, 100 req/min) over the shared keyless public pool.
 
 ### Installation
@@ -249,6 +275,7 @@ The server runs with zero configuration. The one server-specific variable is opt
 | `MCP_TRANSPORT_TYPE` | Transport: `stdio` or `http`. | `stdio` |
 | `MCP_HTTP_PORT` | Port for the HTTP server. | `3010` |
 | `MCP_HTTP_ENDPOINT_PATH` | HTTP endpoint path. | `/mcp` |
+| `MCP_SESSION_MODE` | HTTP session mode: `stateless`, `stateful`, or `auto` (resolves to `stateful`). The server declares `stateless` in code; an explicit value overrides it, while an empty or unsubstituted `${…}` value falls through to `stateless`. | `stateless` |
 | `MCP_AUTH_MODE` | Auth mode: `none`, `jwt`, or `oauth`. | `none` |
 | `MCP_LOG_LEVEL` | Log level (RFC 5424). | `info` |
 | `LOGS_DIR` | Directory for log files (Node.js only). | `<project-root>/logs` |
@@ -315,7 +342,7 @@ See [`CLAUDE.md`/`AGENTS.md`](./CLAUDE.md) for development guidelines and archit
 
 ## Contributing
 
-Issues and pull requests are welcome. Run checks and tests before submitting:
+Issues are welcome. Run checks and tests before submitting:
 
 ```sh
 bun run devcheck
