@@ -1,6 +1,6 @@
 # coingecko-mcp-server - Directory Structure
 
-Generated on: 2026-09-22 03:49:10
+Generated on: 2026-10-07 11:39:18
 
 ```text
 coingecko-mcp-server/
@@ -126,9 +126,11 @@ coingecko-mcp-server/
 │   ├── clean-mcpb.ts
 │   ├── clean.ts
 │   ├── devcheck.ts
+│   ├── install-otel.ts
 │   ├── lint-mcp.ts
 │   ├── lint-packaging.ts
 │   ├── list-skills.ts
+│   ├── prune-musl-packages.ts
 │   ├── release-github.ts
 │   └── tree.ts
 ├── src/

@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.1.4](changelog/0.1.x/0.1.4.md) — 2026-10-07
+
+Framework error responses now carry request IDs and fill declared recovery hints; container and registry packaging follow current templates.
+
 ## [0.1.3](changelog/0.1.x/0.1.3.md) — 2026-09-21
 
 mcp-ts-core 0.13.6 adoption: HTTP now serves stateless by default (#3), unless MCP_SESSION_MODE overrides it; plugin manifests no longer clobber a user's COINGECKO_API_KEY.
