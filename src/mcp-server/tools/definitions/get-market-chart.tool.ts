@@ -123,17 +123,13 @@ export const getMarketChartTool = tool('coingecko_get_market_chart', {
 
     if (input.mode === 'range') {
       if (input.from == null || input.to == null) {
-        throw ctx.fail('invalid_range', 'mode=range requires both from and to (Unix seconds).', {
-          ...ctx.recoveryFor('invalid_range'),
-        });
+        throw ctx.fail('invalid_range', 'mode=range requires both from and to (Unix seconds).');
       }
       granularity = rangeGranularity(input.from, input.to);
       chart = await svc.marketChartRange(input.id, input.vs_currency, input.from, input.to, ctx);
     } else {
       if (input.days == null) {
-        throw ctx.fail('invalid_range', 'mode=recent requires days.', {
-          ...ctx.recoveryFor('invalid_range'),
-        });
+        throw ctx.fail('invalid_range', 'mode=recent requires days.');
       }
       granularity = recentGranularity(input.days);
       chart = await svc.marketChart(input.id, input.vs_currency, input.days, ctx);
@@ -142,7 +138,6 @@ export const getMarketChartTool = tool('coingecko_get_market_chart', {
     if (!chart) {
       throw ctx.fail('coin_not_found', `Coin "${input.id}" not found.`, {
         id: input.id,
-        ...ctx.recoveryFor('coin_not_found'),
       });
     }
 

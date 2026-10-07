@@ -174,7 +174,6 @@ export const getCoinTool = tool('coingecko_get_coin', {
     if (!detail) {
       throw ctx.fail('coin_not_found', `Coin "${input.id}" not found.`, {
         id: input.id,
-        ...ctx.recoveryFor('coin_not_found'),
       });
     }
 

@@ -8,7 +8,7 @@
  */
 
 import { JsonRpcErrorCode, McpError } from '@cyanheads/mcp-ts-core/errors';
-import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const svc = {
@@ -370,6 +370,49 @@ describe('format() does not throw on representative output', () => {
         attribution: 'a',
       }),
     ).not.toThrow();
+  });
+});
+
+describe('declared recovery reaches the client', () => {
+  it('fills each handler reason without throw-site forwarding', async () => {
+    svc.simplePrice.mockResolvedValueOnce({ rows: [], missing: ['nope'] });
+    svc.coinsMarkets.mockResolvedValueOnce(null);
+    svc.coinDetail.mockResolvedValueOnce(null);
+    svc.marketChart.mockResolvedValueOnce(null);
+    const runs = [
+      await runToolContract(getPricesTool, { ids: ['nope'] }),
+      await runToolContract(listMarketsTool, { category: 'nope' }),
+      await runToolContract(getCoinTool, { id: 'nope' }),
+      await runToolContract(getMarketChartTool, { id: 'nope', days: 7 }),
+      await runToolContract(getMarketChartTool, { id: 'bitcoin', mode: 'range' }),
+      await runToolContract(getMarketChartTool, { id: 'bitcoin', mode: 'recent' }),
+    ];
+    const definitions = [
+      getPricesTool,
+      listMarketsTool,
+      getCoinTool,
+      getMarketChartTool,
+      getMarketChartTool,
+      getMarketChartTool,
+    ];
+    for (const [index, run] of runs.entries()) {
+      expect(run.isError).toBe(true);
+      const error = run.structuredContent?.error as {
+        data: { reason: string; recovery: { hint: string } };
+      };
+      const contract = definitions[index]?.errors?.find(
+        (entry) => entry.reason === error.data.reason,
+      );
+      expect(error.data.recovery.hint).toBe(contract?.recovery);
+      expect(run.content).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'text',
+            text: expect.stringContaining(error.data.recovery.hint),
+          }),
+        ]),
+      );
+    }
   });
 });
 

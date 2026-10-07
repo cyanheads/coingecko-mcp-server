@@ -185,7 +185,6 @@ export const listMarketsTool = tool('coingecko_list_markets', {
     if (coins === null) {
       throw ctx.fail('unknown_category', `Category "${input.category}" is not recognized.`, {
         ...(input.category && { category: input.category }),
-        ...ctx.recoveryFor('unknown_category'),
       });
     }
 

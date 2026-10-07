@@ -102,7 +102,7 @@ export const getPricesTool = tool('coingecko_get_prices', {
       throw ctx.fail(
         'all_missing',
         `None of the ${input.ids.length} requested id(s) returned data.`,
-        { missing: result.missing, ...ctx.recoveryFor('all_missing') },
+        { missing: result.missing },
       );
     }
 
