@@ -23,14 +23,14 @@
 
 ## Overview
 
-Cryptocurrency market data from CoinGecko — prices, rankings, historical charts, and deep coin profiles across 15,000+ coins. Resolve a name or ticker to CoinGecko's slug-keyed ID, then chain into price lookups, ranked markets, and trend charts. Runs as a stdio process or a local Streamable HTTP server.
+Cryptocurrency market data from CoinGecko — prices, rankings, historical charts, and deep coin profiles across 15,000+ coins. Resolve a name or ticker to CoinGecko's slug-keyed ID, then chain into price lookups, ranked markets, and trend charts.
 
 ### Tools
 
 | Tool | Description |
 |:---|:---|
 | `coingecko_search_coins` | Resolve a coin name or ticker symbol to a CoinGecko ID (slug). The required first step before any ID-keyed tool. |
-| `coingecko_get_prices` | Current prices and core market stats across coin/currency batches. Accepts 500 raw IDs, processes 250 unique slugs, and discloses skipped IDs and partial misses. |
+| `coingecko_get_prices` | Current prices and core market stats across coin/currency batches. |
 | `coingecko_list_markets` | Ranked market table — coins by market cap, volume, or ID, optionally filtered to a category or selected IDs. |
 | `coingecko_get_coin` | Deep single-coin profile — description, links, market data, developer activity, community, sentiment. `sections` trims the large record. |
 | `coingecko_get_market_chart` | Historical price, market cap, and volume series. `recent` (last N days, auto-granularity) or `range` (explicit Unix-second window) mode. |
@@ -65,26 +65,18 @@ All resource data is also reachable via tools — the resources mirror `coingeck
 
 ### `coingecko_get_prices` <sub>tool</sub>
 
-- Accepts up to 500 raw IDs; trims, lowercases, and deduplicates them, processes the first 250 unique slugs, and discloses remaining `skippedIds` separately from upstream misses
-- IDs and currency codes are trimmed and lowercased across price, coin, chart, market, global, and coin-resource lookups; blank normalized entries are rejected
-- One row per `(id, currency)` that returned a price; market cap, 24h volume, and 24h change are optional per row
-- A wrong or unknown slug returns a silent empty response upstream rather than an error — `missing` lists unresolved ids so a typo reads as "unresolved," not "nonexistent"
-- Currencies with no numeric quotes are disclosed via `enrichment.notice`; unavailable quotes do not establish that a currency is unsupported
-- `lastUpdatedAtUnixSec`, when present, is Unix seconds — `coingecko_get_market_chart`'s point timestamps are milliseconds
-- Throws `all_missing` only when no requested id resolves
-- Throws `no_price_data` when IDs resolve but no requested currency returns a numeric quote
+- Accepts up to 500 raw IDs (trimmed, lowercased, deduplicated) and processes the first 250 unique slugs; `skippedIds` lists the rest and `missing` lists ids that didn't resolve, since an unknown slug returns an empty upstream response rather than an error
+- One row per `(id, currency)` that returned a price; market cap, 24h volume, and 24h change are optional per row. Currencies with no quotes are noted in `enrichment.notice`
+- `lastUpdatedAtUnixSec` is Unix seconds — `coingecko_get_market_chart`'s point timestamps are milliseconds
+- Throws `all_missing` when no requested id resolves, `no_price_data` when IDs resolve but no requested currency returns a numeric quote
 
 ---
 
 ### `coingecko_list_markets` <sub>tool</sub>
 
-- Sort by market cap, volume, or ID, ascending or descending, via `order`
-- Optional `ids` selects coins using the same 500-raw/250-unique bounds as price batches; `appliedIds` and `skippedIds` disclose the selection without inferring missing IDs from one page
-- Optional `category` filter — pass a `categoryId` from `coingecko_list_categories`
-- Choose either `ids` or `category`; combining them returns `conflicting_filters` because CoinGecko ignores IDs when a category is supplied
-- Pagination via `page` and `per_page` (default 50, max 250 rows); `enrichment.truncated` discloses when a page fills
-- Per-coin fields include price, cap, volume, 1h/24h/7d change, supply, and ATH/ATL
-- Empty pages explain that the current page returned no rows and suggest page 1 or revised filters
+- Sort by market cap, volume, or ID, ascending or descending, via `order`; paginate with `page` and `per_page` (default 50, max 250 rows)
+- Filter by `ids` (same 500-raw/250-unique bounds as price batches; `appliedIds` and `skippedIds` show the selection) or by `category` (a `categoryId` from `coingecko_list_categories`), not both — combining them returns `conflicting_filters`
+- Per-coin fields include price, cap, volume, 1h/24h/7d change, supply, and ATH/ATL; `enrichment.truncated` flags a full page
 - Throws `unknown_category` when CoinGecko returns HTTP 404 for a category-filtered request
 
 ---
@@ -92,26 +84,18 @@ All resource data is also reachable via tools — the resources mirror `coingeck
 ### `coingecko_get_coin` <sub>tool</sub>
 
 - Six sections — `profile`, `market`, `links`, `developer`, `community`, `sentiment`; `sections` trims the response to just what's needed (the full record is large)
-- Prices and every percentage-change window use `vs_currency` (defaults to `usd`); zero changes are preserved, null/missing metrics are omitted
-- Quoted records, including null price keys, need no extra request. Missing quote keys consult the supported-currency catalog only when market data is selected; supported but unquoted currencies stay sparse
-- Primary and conditional currency requests, including retries and backoff, share a 50-second deadline; profile-only selections skip currency validation
-- `profile.categories` are display names (e.g. `"Layer 1 (L1)"`) — distinct from the `categoryId` slugs `coingecko_list_categories` returns
-- Sparse upstream fields are omitted rather than fabricated
-- Throws `coin_not_found` when the slug isn't recognized upstream
-- Throws `unsupported_currency` only when the supported-currency catalog excludes the requested market currency; catalog failures remain upstream errors
+- Prices and percentage-change windows use `vs_currency` (defaults to `usd`); missing upstream fields are omitted rather than fabricated
+- `profile.categories` are display names (e.g. `"Layer 1 (L1)"`), distinct from the `categoryId` slugs `coingecko_list_categories` returns
+- Throws `coin_not_found` when the slug isn't recognized upstream, `unsupported_currency` when the requested market currency isn't a supported one
 
 ---
 
 ### `coingecko_get_market_chart` <sub>tool</sub>
 
-- `recent` mode accepts 1–365 days; `"max"` is an explicit alias for the 365-day keyless/Demo history window and emits a notice
-- `range` mode: an explicit window via `from`/`to` as Unix seconds
+- `recent` mode takes 1–365 days (`"max"` aliases the 365-day window and emits a notice); `range` mode takes `from`/`to` as Unix seconds
 - `interval` selects `auto` (upstream default), `daily`, or `hourly`, subject to upstream tier/window availability
-- `point_offset` (default 0) and `point_limit` (default 100, effective cap 250) return exact indexed observations from each original series; larger limits use the cap with a notice
-- Both response surfaces carry every returned price, market-cap, and volume point; per-series totals and `nextPointOffset` support continuation
-- Subsequent pages refetch upstream data and are not snapshots; observations can revise and recent windows can move
-- `granularity` measures the complete original price series as `5-minute`, `hourly`, `daily`, `irregular`, or `unknown`; `observedIntervalInMs` reports median positive timestamp spacing when measurable
-- Point timestamps are Unix milliseconds — `coingecko_get_prices`'s `lastUpdatedAtUnixSec` is seconds
+- Pages with `point_offset` (default 0) and `point_limit` (default 100, cap 250); per-series totals and `nextPointOffset` support continuation, and each page refetches upstream data
+- `granularity` reports the series spacing as `5-minute`, `hourly`, `daily`, `irregular`, or `unknown`; point timestamps are Unix milliseconds, while `coingecko_get_prices`'s `lastUpdatedAtUnixSec` is seconds
 - Throws `invalid_range` on a mode/parameter mismatch, `coin_not_found` when the slug isn't recognized
 
 ---
@@ -135,11 +119,9 @@ All resource data is also reachable via tools — the resources mirror `coingeck
 
 ### `coingecko_list_categories` <sub>tool</sub>
 
-- Optional `name_contains` filters the complete category list locally by whitespace-separated tokens — case- and punctuation-insensitive, every token must appear in the name
-- Unfiltered calls preserve every category and disclose the actual catalog size with narrowing examples
-- `enrichment.totalCount` reports the total category count before any local filter
+- Optional `name_contains` filters by whitespace-separated tokens, case- and punctuation-insensitive; every token must appear in the name
+- `enrichment.totalCount` reports the full category count before filtering; a filter that matches nothing returns `enrichment.notice`
 - Returned `categoryId` values are what `coingecko_list_markets`'s `category` param expects
-- A filter that matches nothing returns `enrichment.notice` suggesting an unfiltered browse instead
 
 ---
 
@@ -147,7 +129,6 @@ All resource data is also reachable via tools — the resources mirror `coingeck
 
 - Same data as `coingecko_get_coin`'s full record, always denominated in USD
 - `{id}` is a CoinGecko slug (e.g. `"bitcoin"`) — resolve tickers with `coingecko_search_coins`
-- URI escapes are decoded once before trimming and lowercasing; `%20Bitcoin%20` resolves to `bitcoin`, while malformed escapes fail validation
 - Throws `coin_not_found` when the slug isn't recognized upstream
 
 ---
@@ -172,14 +153,14 @@ CoinGecko-specific:
 
 - Type-safe client for the CoinGecko v3 REST API, with one service method per endpoint
 - Runs keyless on the public tier; an optional Demo API key (`x-cg-demo-api-key`) raises the rate ceiling with no other config change
-- Calibrated retry/backoff for rate limits, transient upstream failures, and timeouts; honors `Retry-After`, while permanent refusals (including HTTP 501) fail immediately
-- Status-specific error reasons and recovery, with bounded plain-text explanations from CoinGecko's JSON error envelopes; historical-window restrictions recommend narrowing the range
+- Retry/backoff for rate limits, transient upstream failures, and timeouts; honors `Retry-After`, and permanent refusals fail immediately
+- Status-specific error reasons with recovery hints, including narrowing the range on historical-window restrictions
 
 Agent-friendly output:
 
 - Search-before-query enforced through descriptions — every ID-keyed tool states slugs-not-tickers and points back to `coingecko_search_coins`
-- Partial reads — price results disclose unresolved IDs and currencies without quotes; total misses and resolved coins without numeric quotes produce distinct errors. Enrichment discloses caps and applied filters
-- Units made explicit — timestamp fields document seconds vs. milliseconds so callers don't misread them
+- Partial reads — price results disclose unresolved IDs and currencies without quotes; enrichment discloses caps and applied filters
+- Units made explicit — timestamp fields document seconds vs. milliseconds
 - Required CoinGecko attribution ships on every tool and resource output; the research prompt instructs the agent to attribute its findings the same way
 
 ## Getting started
@@ -285,11 +266,11 @@ The server runs with zero configuration. The one server-specific variable is opt
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `COINGECKO_API_KEY` | Optional CoinGecko **Demo** API key. When set, it is sent as the `x-cg-demo-api-key` header for the dedicated Demo tier (10k/mo, 100 req/min); the base URL is unchanged. Absent → keyless public tier (shared, IP-throttled). | — |
+| `COINGECKO_API_KEY` | Optional CoinGecko **Demo** API key, sent as the `x-cg-demo-api-key` header (10k/mo, 100 req/min). Absent → keyless public tier. | — |
 | `MCP_TRANSPORT_TYPE` | Transport: `stdio` or `http`. | `stdio` |
 | `MCP_HTTP_PORT` | Port for the HTTP server. | `3010` |
 | `MCP_HTTP_ENDPOINT_PATH` | HTTP endpoint path. | `/mcp` |
-| `MCP_SESSION_MODE` | HTTP session mode: `stateless`, `stateful`, or `auto` (resolves to `stateful`). The server declares `stateless` in code; an explicit value overrides it, while an empty or unsubstituted `${…}` value falls through to `stateless`. | `stateless` |
+| `MCP_SESSION_MODE` | HTTP session mode: `stateless`, `stateful`, or `auto`. | `stateless` |
 | `MCP_AUTH_MODE` | Auth mode: `none`, `jwt`, or `oauth`. | `none` |
 | `MCP_LOG_LEVEL` | Log level (RFC 5424). | `info` |
 | `LOGS_DIR` | Directory for log files (Node.js only). | `<project-root>/logs` |
