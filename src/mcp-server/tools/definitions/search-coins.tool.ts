@@ -1,10 +1,11 @@
 /**
- * @fileoverview coingecko_search_coins — resolve a coin name or ticker symbol to
- * a CoinGecko ID (slug). The required first step before any ID-keyed tool.
+ * @fileoverview coingecko_search_coins — resolve coin names, tickers, or
+ * platform-specific contract addresses to CoinGecko IDs.
  * @module src/mcp-server/tools/definitions/search-coins.tool
  */
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
+import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 
 import { getCoinGeckoService } from '@/services/coingecko/coingecko-service.js';
 import { COINGECKO_SERVICE_ERRORS } from '@/services/coingecko/error-contracts.js';
@@ -16,16 +17,46 @@ const MAX_COINS = 25;
 export const searchCoinsTool = tool('coingecko_search_coins', {
   title: 'coingecko-mcp-server: search coins',
   description:
-    'Resolve a coin name or ticker symbol to a CoinGecko ID (slug). The required first step before any ID-keyed tool — CoinGecko keys data by slug (bitcoin, ethereum), not ticker (BTC, ETH), and tickers are not unique (many coins share ETH/USDC). Returns ranked matches with id, symbol, name, and market_cap_rank to disambiguate; pick the intended coin from the ranked candidates.',
+    'Resolve a coin name, ticker, or platform-specific contract address to a CoinGecko ID (slug). Use query for ranked name/ticker matches, or platform and contract_address for one token. Use the returned id in coin, price, market, and chart tools.',
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
 
-  errors: [...COINGECKO_SERVICE_ERRORS],
+  errors: [
+    {
+      reason: 'invalid_coin_selector',
+      code: JsonRpcErrorCode.ValidationError,
+      when: 'The caller omitted a selector, combined a query with a contract selector, or supplied only one contract field.',
+      recovery: 'Pass query alone, or pass both platform and contract_address without query.',
+    },
+    {
+      reason: 'contract_not_found',
+      code: JsonRpcErrorCode.NotFound,
+      when: 'CoinGecko returned HTTP 404 for the supplied platform and contract address.',
+      recovery:
+        'Verify the CoinGecko asset platform ID and the exact contract address, including its casing.',
+    },
+    ...COINGECKO_SERVICE_ERRORS,
+  ],
 
   input: z.object({
     query: z
       .string()
       .min(1)
+      .optional()
       .describe('Coin name or ticker symbol to resolve (e.g. "bitcoin", "ETH", "solana").'),
+    platform: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe(
+        'CoinGecko asset platform ID (e.g. "ethereum", "base", "tron"). See https://docs.coingecko.com/reference/asset-platforms for valid IDs.',
+      ),
+    contract_address: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe('Token contract address on the specified platform. Preserve its original casing.'),
   }),
 
   output: z.object({
@@ -76,13 +107,24 @@ export const searchCoinsTool = tool('coingecko_search_coins', {
   },
 
   async handler(input, ctx) {
-    ctx.log.info('coingecko_search_coins', { query: input.query });
-    const all = await getCoinGeckoService().search(input.query, ctx);
+    const { query, platform, contract_address: contractAddress } = input;
+    if (query === undefined || platform !== undefined || contractAddress !== undefined) {
+      if (query !== undefined || platform === undefined || contractAddress === undefined) {
+        throw ctx.fail('invalid_coin_selector');
+      }
+      ctx.log.info('coingecko_search_coins contract lookup', { platform });
+      const coin = await getCoinGeckoService().searchByContract(platform, contractAddress, ctx);
+      if (!coin) throw ctx.fail('contract_not_found');
+      return { coins: [coin], attribution: COINGECKO_ATTRIBUTION };
+    }
+
+    ctx.log.info('coingecko_search_coins', { query });
+    const all = await getCoinGeckoService().search(query, ctx);
     const coins = all.slice(0, MAX_COINS);
 
     if (coins.length === 0) {
       ctx.enrich.notice(
-        `No coin matched "${input.query}". Try a fuller name (e.g. "bitcoin" instead of a partial) or the ticker symbol.`,
+        `No coin matched "${query}". Try a fuller name (e.g. "bitcoin" instead of a partial) or the ticker symbol.`,
       );
     } else if (all.length > MAX_COINS) {
       ctx.enrich.truncated({ shown: coins.length, cap: MAX_COINS });

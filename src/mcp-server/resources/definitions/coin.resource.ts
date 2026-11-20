@@ -13,7 +13,7 @@ import { COINGECKO_ATTRIBUTION } from '@/services/coingecko/types.js';
 export const coinResource = resource('coingecko://coin/{id}', {
   name: 'coingecko-mcp-server: coin record',
   description:
-    'Deep coin record by CoinGecko slug — identity, market data (USD), links, developer activity, community stats, and sentiment. Same data as coingecko_get_coin. The {id} is a slug (e.g. "bitcoin"), not a ticker.',
+    'Deep coin record by CoinGecko slug: identity, market data in USD, links, platform contract addresses, and developer, community, or sentiment metrics when available. Same data as coingecko_get_coin.',
   mimeType: 'application/json',
 
   errors: [

@@ -7,7 +7,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-0.2.0-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/coingecko-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^2.3.1-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/%40cyanheads%2Fcoingecko-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/coingecko-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-v1.4.3-blueviolet.svg?style=flat-square)](https://bun.sh/)
+[![Version](https://img.shields.io/badge/Version-0.2.0-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/coingecko-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^2.4.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/%40cyanheads%2Fcoingecko-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/coingecko-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-v1.4.4-blueviolet.svg?style=flat-square)](https://bun.sh/)
 
 </div>
 
@@ -23,20 +23,20 @@
 
 ## Overview
 
-Cryptocurrency market data from CoinGecko — prices, rankings, historical charts, and deep coin profiles across 15,000+ coins. Resolve a name or ticker to CoinGecko's slug-keyed ID, then chain into price lookups, ranked markets, and trend charts.
+Cryptocurrency market data from CoinGecko — prices, rankings, historical charts, and deep coin profiles across 15,000+ coins. Resolve a name, ticker, or token contract to a CoinGecko slug for price lookups, ranked markets, and trend charts.
 
 ### Tools
 
 | Tool | Description |
 |:---|:---|
-| `coingecko_search_coins` | Resolve a coin name or ticker symbol to a CoinGecko ID (slug). The required first step before any ID-keyed tool. |
+| `coingecko_search_coins` | Resolve a coin name, ticker, or platform-specific contract address to a CoinGecko slug. |
 | `coingecko_get_prices` | Current prices and core market stats across coin/currency batches. |
 | `coingecko_list_markets` | Ranked market table — coins by market cap, volume, or ID, optionally filtered to a category or selected IDs. |
-| `coingecko_get_coin` | Deep single-coin profile — description, links, market data, developer activity, community, sentiment. `sections` trims the large record. |
+| `coingecko_get_coin` | Coin profile, market data, platform contracts, links, developer activity, community, and sentiment. Select fields with `sections`. |
 | `coingecko_get_market_chart` | Historical price, market cap, and volume series. `recent` (last N days, auto-granularity) or `range` (explicit Unix-second window) mode. |
 | `coingecko_get_trending` | Coins trending on CoinGecko in the last 24 hours, by search volume. |
-| `coingecko_get_global` | Global crypto market snapshot — total market cap and volume, BTC/ETH dominance, active counts, ongoing ICOs, 24h change. |
-| `coingecko_list_categories` | Coin categories (`category_id` + display name) — the valid slugs for `coingecko_list_markets`'s `category` filter. |
+| `coingecko_get_global` | Global market cap, volume, dominance, Fear & Greed index, active counts, and 24h changes. |
+| `coingecko_list_categories` | Browse category slugs and names or rank categories by aggregate market data. |
 
 ### Resources
 
@@ -53,21 +53,26 @@ All resource data is also reachable via tools — the resources mirror `coingeck
 |:---|:---|
 | `coingecko_coin_research` | Guides a full single-coin research pass through the search → get_coin → get_market_chart → get_global chain. |
 
+### Agent skill
+
+The [CoinGecko guide](skills/coingecko-guide/SKILL.md) covers slug and contract resolution, pricing batches, chart windows, and category discovery. MCP clients that support skill discovery can find it through the server.
+
 ## Capability reference
 
 ### `coingecko_search_coins` <sub>tool</sub>
 
 - Tickers are not unique (many coins share `ETH`/`USDC`) — returns ranked candidates with `id`, `symbol`, `name`, and `marketCapRank` to disambiguate
-- Returns the top 25 matches by relevance; `enrichment.truncated` plus `shown`/`cap` disclose when the list is capped
-- An empty result is a normal outcome, not an error — `enrichment.notice` suggests broadening the query
+- Name and ticker searches return the top 25 matches by relevance. The response includes `truncated`, `shown`, and `cap` when capped.
+- A name or ticker search with no matches returns an empty list and a `notice` suggesting how to broaden the query.
+- Pass `query` for names or tickers, or pair `platform` and `contract_address` for one token. Use a [CoinGecko asset platform ID](https://docs.coingecko.com/reference/asset-platforms) and preserve address case. An unresolved pair returns `contract_not_found`.
 
 ---
 
 ### `coingecko_get_prices` <sub>tool</sub>
 
-- Accepts up to 500 raw IDs (trimmed, lowercased, deduplicated) and processes the first 250 unique slugs; `skippedIds` lists the rest and `missing` lists ids that didn't resolve, since an unknown slug returns an empty upstream response rather than an error
-- One row per `(id, currency)` that returned a price; market cap, 24h volume, and 24h change are optional per row. Currencies with no quotes are noted in `enrichment.notice`
-- `lastUpdatedAtUnixSec` is Unix seconds — `coingecko_get_market_chart`'s point timestamps are milliseconds
+- Accepts up to 500 raw ID entries. IDs and quote currencies are split on commas, trimmed, lowercased, and deduplicated in first-seen order. The first 250 unique IDs are processed, `skippedIds` lists the rest, and `missing` lists IDs absent upstream. Each supplied list must yield a usable value.
+- One row per `(id, currency)` that returned a price. Market cap, 24h volume, and 24h change are optional per row. The `notice` names currencies with no quotes.
+- Each priced row includes `lastUpdatedAtUnixSec` when CoinGecko supplies it. The batch field of the same name reports the oldest timestamp among returned rows that have one. Both use Unix seconds.
 - Throws `all_missing` when no requested id resolves, `no_price_data` when IDs resolve but no requested currency returns a numeric quote
 
 ---
@@ -76,15 +81,17 @@ All resource data is also reachable via tools — the resources mirror `coingeck
 
 - Sort by market cap, volume, or ID, ascending or descending, via `order`; paginate with `page` and `per_page` (default 50, max 250 rows)
 - Filter by `ids` (same 500-raw/250-unique bounds as price batches; `appliedIds` and `skippedIds` show the selection) or by `category` (a `categoryId` from `coingecko_list_categories`), not both — combining them returns `conflicting_filters`
-- Per-coin fields include price, cap, volume, 1h/24h/7d change, supply, and ATH/ATL; `enrichment.truncated` flags a full page
+- Per-coin fields include price, cap, volume, 1h/24h/7d change, supply, and ATH/ATL. `truncated` flags a full page.
+- A short first page for an ID selection lists applied IDs with no market row in `notReturnedIds` when there are any. If the first page is empty, the field lists every applied ID.
 - Throws `unknown_category` when CoinGecko returns HTTP 404 for a category-filtered request
 
 ---
 
 ### `coingecko_get_coin` <sub>tool</sub>
 
-- Six sections — `profile`, `market`, `links`, `developer`, `community`, `sentiment`; `sections` trims the response to just what's needed (the full record is large)
-- Prices and percentage-change windows use `vs_currency` (defaults to `usd`); missing upstream fields are omitted rather than fabricated
+- Seven sections are available through `sections` — `profile`, `market`, `platforms`, `links`, `developer`, `community`, and `sentiment`.
+- Market price, volume, 24h high/low, and price changes use `vs_currency` (default `usd`). Market cap rank, developer activity, and community metrics appear when reported.
+- `platforms` includes the asset platform ID when reported and one row per platform with a contract address and optional decimal precision.
 - `profile.categories` are display names (e.g. `"Layer 1 (L1)"`), distinct from the `categoryId` slugs `coingecko_list_categories` returns
 - Throws `coin_not_found` when the slug isn't recognized upstream, `unsupported_currency` when the requested market currency isn't a supported one
 
@@ -93,6 +100,7 @@ All resource data is also reachable via tools — the resources mirror `coingeck
 ### `coingecko_get_market_chart` <sub>tool</sub>
 
 - `recent` mode takes 1–365 days (`"max"` aliases the 365-day window and emits a notice); `range` mode takes `from`/`to` as Unix seconds
+- Omit `mode` to infer `range` from a complete `from`/`to` pair without `days`. The result echoes the applied window, and a notice names window fields ignored by the selected mode.
 - `interval` selects `auto` (upstream default), `daily`, or `hourly`, subject to upstream tier/window availability
 - Pages with `point_offset` (default 0) and `point_limit` (default 100, cap 250); per-series totals and `nextPointOffset` support continuation, and each page refetches upstream data
 - `granularity` reports the series spacing as `5-minute`, `hourly`, `daily`, `irregular`, or `unknown`; point timestamps are Unix milliseconds, while `coingecko_get_prices`'s `lastUpdatedAtUnixSec` is seconds
@@ -113,15 +121,18 @@ All resource data is also reachable via tools — the resources mirror `coingeck
 - No coin id needed — one call for the macro snapshot
 - `vs_currency` (default `usd`) scopes only total market cap and volume; dominance and the 24h change percentages are always USD-denominated upstream
 - Throws `unsupported_currency` when the requested currency has no entry in upstream's per-currency maps — `/global` has no upstream currency validation, so an unknown code silently returns no totals
-- Returns active-cryptocurrency and active-market counts, ongoing ICO count, and a Unix-second snapshot timestamp
+- `dominance` lists available percentages in upstream order, with BTC and ETH also available as convenience fields. `fearGreedIndex` contains the reported value and sentiment when both are available.
+- Volume, counts, changes, and the Unix-second snapshot timestamp appear when reported.
 
 ---
 
 ### `coingecko_list_categories` <sub>tool</sub>
 
-- Optional `name_contains` filters by whitespace-separated tokens, case- and punctuation-insensitive; every token must appear in the name
-- `enrichment.totalCount` reports the full category count before filtering; a filter that matches nothing returns `enrichment.notice`
+- Optional `name_contains` matches each normalized query token against the start of a name word, ignoring case, accents, and punctuation.
+- `totalCount` reports the number of rows from the selected endpoint before filtering. A filter that matches nothing returns a `notice`.
 - Returned `categoryId` values are what `coingecko_list_markets`'s `category` param expects
+- Set `include_market_data` to browse aggregate USD market cap, 24h cap change, 24h volume, update time, and top coin IDs when reported. This endpoint can omit catalog categories.
+- Market-data mode supports `order` (`market_cap_desc` by default, `market_cap_asc`, `market_cap_change_24h_desc`, or `market_cap_change_24h_asc`) and a positive USD `min_market_cap`. Paginate filtered results with `limit` (default 50, maximum 250) and `offset` (default 0), following `nextOffset` when present. Each page refetches the live ranking.
 
 ---
 
@@ -158,7 +169,7 @@ CoinGecko-specific:
 
 Agent-friendly output:
 
-- Search-before-query enforced through descriptions — every ID-keyed tool states slugs-not-tickers and points back to `coingecko_search_coins`
+- Pass known CoinGecko slugs directly or resolve names, tickers, and contracts with `coingecko_search_coins`.
 - Partial reads — price results disclose unresolved IDs and currencies without quotes; enrichment discloses caps and applied filters
 - Units made explicit — timestamp fields document seconds vs. milliseconds
 - Required CoinGecko attribution ships on every tool and resource output; the research prompt instructs the agent to attribute its findings the same way
@@ -230,7 +241,7 @@ MCP_TRANSPORT_TYPE=http MCP_HTTP_PORT=3010 bun run start:http
 
 ### Prerequisites
 
-- [Bun v1.4.0](https://bun.sh/) or higher (or Node.js v24+).
+- [Bun v1.4.4](https://bun.sh/) or higher (or Node.js v24+).
 - No account or API key required to run. Optionally, a free [CoinGecko Demo API key](https://www.coingecko.com/en/api/pricing) for a higher rate ceiling (10k calls/month, 100 req/min) over the shared keyless public pool.
 
 ### Installation

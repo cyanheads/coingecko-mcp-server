@@ -188,6 +188,27 @@ describe('upstream failure contracts (#9)', () => {
       expect(error.data.reason).toBe('upstream_invalid_params');
       expect(error.message).not.toContain(body);
       expect(error.data.responseBody).toBe(body);
+      const run = await runToolContract(
+        {
+          ...searchCoinsTool,
+          handler: async () => {
+            throw error;
+          },
+        },
+        { query: 'coin' },
+      );
+      expect(run.structuredContent?.error).toMatchObject({
+        code: error.code,
+        data: { reason: 'upstream_invalid_params' },
+      });
+      expect(run.structuredContent?.error?.data).not.toHaveProperty('body');
+      expect(run.structuredContent?.error?.data).not.toHaveProperty('responseBody');
+      const text = run.content
+        .filter((block) => block.type === 'text')
+        .map((block) => block.text)
+        .join('\n');
+      expect(text).toContain(error.data.recovery.hint);
+      expect(text).not.toContain(body);
     },
   );
 

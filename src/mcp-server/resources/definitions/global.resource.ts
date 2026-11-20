@@ -12,7 +12,7 @@ import { COINGECKO_ATTRIBUTION } from '@/services/coingecko/types.js';
 export const globalResource = resource('coingecko://global', {
   name: 'coingecko-mcp-server: global market',
   description:
-    'Global crypto market snapshot (USD): total market cap and 24h volume, BTC/ETH dominance, active-coin and market counts, ongoing ICOs, and 24h change. Same data as coingecko_get_global.',
+    'Global crypto market snapshot in USD: market cap, volume, asset dominance, Fear & Greed index, counts, and 24h change when available. Same data as coingecko_get_global.',
   mimeType: 'application/json',
 
   params: z.object({}),

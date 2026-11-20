@@ -67,6 +67,40 @@ const ctx = createMockContext();
 beforeEach(() => mockFetchWithTimeout.mockReset());
 
 describe('search', () => {
+  it.each([
+    ['..', 'AbCdEf'],
+    ['solana', '.'],
+  ])('rejects a URL dot segment before resolving a contract', async (platform, contractAddress) => {
+    mockFetchWithTimeout.mockResolvedValueOnce(
+      jsonResponse({ id: 'token', symbol: 't', name: 'Token' }),
+    );
+    await expect(
+      makeService().searchByContract(platform, contractAddress, ctx),
+    ).rejects.toMatchObject({
+      code: JsonRpcErrorCode.InvalidParams,
+    });
+    expect(mockFetchWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it('resolves a case-sensitive contract on the requested platform and handles 404', async () => {
+    mockFetchWithTimeout
+      .mockResolvedValueOnce(
+        jsonResponse({ id: 'sample', symbol: 's', name: 'Sample', market_cap_rank: 12 }),
+      )
+      .mockRejectedValueOnce(fetchHttpError(404));
+    const service = makeService();
+    expect(await service.searchByContract(' Solana ', 'AbCdEf', ctx)).toEqual({
+      id: 'sample',
+      symbol: 's',
+      name: 'Sample',
+      marketCapRank: 12,
+    });
+    expect(new URL(mockFetchWithTimeout.mock.calls[0]?.[0]).pathname).toBe(
+      '/api/v3/coins/solana/contract/AbCdEf',
+    );
+    expect(await service.searchByContract('solana', 'Missing', ctx)).toBeNull();
+  });
+
   it('normalizes coins and preserves absence of rank/thumb', async () => {
     mockFetchWithTimeout.mockResolvedValueOnce(
       jsonResponse({
@@ -85,6 +119,45 @@ describe('search', () => {
 });
 
 describe('simplePrice — silent-miss detection', () => {
+  it('uses the oldest returned quote timestamp regardless of upstream order', async () => {
+    const bitcoin = { usd: 1, eur: 2, last_updated_at: 100 };
+    const ethereum = { usd: 3, last_updated_at: 200 };
+    const unquoted = { last_updated_at: 10 };
+    mockFetchWithTimeout
+      .mockResolvedValueOnce(jsonResponse({ bitcoin, ethereum, unquoted }))
+      .mockResolvedValueOnce(jsonResponse({ ethereum, bitcoin, unquoted }));
+    const service = makeService();
+    for (const _ of [0, 1]) {
+      const out = await service.simplePrice(
+        ['bitcoin', 'ethereum', 'unquoted'],
+        ['usd', 'eur'],
+        ctx,
+      );
+      expect(out.lastUpdatedAt).toBe(100);
+      expect(out.rows).toEqual(
+        expect.arrayContaining([
+          { id: 'bitcoin', currency: 'usd', price: 1, lastUpdatedAtUnixSec: 100 },
+          { id: 'bitcoin', currency: 'eur', price: 2, lastUpdatedAtUnixSec: 100 },
+          { id: 'ethereum', currency: 'usd', price: 3, lastUpdatedAtUnixSec: 200 },
+        ]),
+      );
+    }
+  });
+
+  it('normalizes packed IDs and currencies for lookup and missing metadata', async () => {
+    mockFetchWithTimeout.mockResolvedValueOnce(jsonResponse({ bitcoin: { usd: 1, eur: 2 } }));
+    const out = await makeService().simplePrice(
+      [' Bitcoin, ETHereum , ,bitcoin'],
+      [' USD,EUR,usd'],
+      ctx,
+    );
+    expect(out.rows.map((row) => row.currency)).toEqual(['usd', 'eur']);
+    expect(out.missing).toEqual(['ethereum']);
+    const url = new URL(mockFetchWithTimeout.mock.calls[0]?.[0]);
+    expect(url.searchParams.get('ids')).toBe('bitcoin,ethereum');
+    expect(url.searchParams.get('vs_currencies')).toBe('usd,eur');
+  });
+
   it('normalizes IDs/currencies before request and missing comparison (#13)', async () => {
     mockFetchWithTimeout.mockResolvedValueOnce(jsonResponse({ bitcoin: { usd: 1 } }));
     const out = await makeService().simplePrice([' Bitcoin ', 'bitcoin'], [' USD ', 'usd'], ctx);
@@ -116,6 +189,7 @@ describe('simplePrice — silent-miss detection', () => {
         marketCap: 1.28e12,
         vol24h: 2.22e10,
         change24h: 0.196,
+        lastUpdatedAtUnixSec: 1781351543,
       },
     ]);
     expect(out.missing).toEqual(['notacoin']);
@@ -128,6 +202,7 @@ describe('simplePrice — silent-miss detection', () => {
     const out = await makeService().simplePrice(['bitcoin'], ['usd', 'eur'], ctx);
     expect(out.rows).toEqual([{ id: 'bitcoin', currency: 'usd', price: 63881 }]);
     expect(out.missing).toEqual([]); // coin resolved; only the eur currency dropped
+    expect(out).not.toHaveProperty('lastUpdatedAt');
   });
 
   it('reports every id as missing on a total 200 {} miss', async () => {
@@ -143,7 +218,7 @@ describe('coinsMarkets', () => {
     mockFetchWithTimeout.mockResolvedValueOnce(jsonResponse([]));
     await makeService().coinsMarkets(
       {
-        ids: [' Bitcoin ', 'bitcoin', 'ethereum'],
+        ids: [' Bitcoin , ,ETHEREUM', 'bitcoin'],
         vsCurrency: ' USD ',
         order: 'id_asc',
         page: 2,
@@ -159,6 +234,14 @@ describe('coinsMarkets', () => {
       page: '2',
       per_page: '1',
     });
+  });
+
+  it('rejects an explicitly empty normalized ID selection before fetching', async () => {
+    const input = { ids: [' , , '], vsCurrency: 'usd', order: 'id_asc', page: 1, perPage: 50 };
+    await expect(makeService().coinsMarkets(input, ctx)).rejects.toMatchObject({
+      code: JsonRpcErrorCode.InvalidParams,
+    });
+    expect(mockFetchWithTimeout).not.toHaveBeenCalled();
   });
   it('normalizes and omits null fields; prefers in-currency 24h change', async () => {
     mockFetchWithTimeout.mockResolvedValueOnce(
@@ -223,6 +306,45 @@ describe('coinsMarkets', () => {
 });
 
 describe('coinDetail — sparse payloads + 404', () => {
+  it('merges platform addresses and reads market metrics in the requested currency', async () => {
+    mockFetchWithTimeout.mockResolvedValueOnce(
+      jsonResponse({
+        id: 'sample',
+        symbol: 's',
+        name: 'Sample',
+        asset_platform_id: 'solana',
+        market_cap_rank: 10,
+        platforms: { '': '', solana: 'Old', ethereum: 'EthAddr', base: 'BaseAddr', polygon: '' },
+        detail_platforms: {
+          solana: { contract_address: 'AbCdEf', decimal_place: 0 },
+          ethereum: { contract_address: '', decimal_place: 18 },
+          polygon: { contract_address: '', decimal_place: null },
+        },
+        market_data: {
+          current_price: { eur: 1 },
+          total_volume: { usd: 5, eur: 0 },
+          high_24h: { usd: 20, eur: 10 },
+          low_24h: { usd: 2, eur: 1 },
+        },
+      }),
+    );
+    const out = await makeService().coinDetail('sample', 'eur', ctx);
+    expect(out?.platforms).toEqual({
+      assetPlatformId: 'solana',
+      contracts: [
+        { platform: 'solana', contractAddress: 'AbCdEf', decimalPlace: 0 },
+        { platform: 'ethereum', contractAddress: 'EthAddr', decimalPlace: 18 },
+        { platform: 'base', contractAddress: 'BaseAddr' },
+      ],
+    });
+    expect(out?.market).toMatchObject({
+      totalVolume: 0,
+      high24h: 10,
+      low24h: 1,
+      marketCapRank: 10,
+    });
+  });
+
   it('returns null on HTTP 404 (unknown slug)', async () => {
     mockFetchWithTimeout.mockRejectedValueOnce(
       fetchHttpError(404, JSON.stringify({ error: 'coin not found' })),
@@ -239,6 +361,8 @@ describe('coinDetail — sparse payloads + 404', () => {
         name: 'Sparse Coin',
         categories: ['Layer 1 (L1)', null],
         description: { en: '' },
+        platforms: { '': '' },
+        detail_platforms: { '': { contract_address: '', decimal_place: null } },
         links: { homepage: ['', ''], repos_url: { github: [] }, whitepaper: '' },
         community_data: {
           reddit_subscribers: null,
@@ -263,6 +387,7 @@ describe('coinDetail — sparse payloads + 404', () => {
 
     // Categories: nulls dropped, display names kept.
     expect(out.profile.categories).toEqual(['Layer 1 (L1)']);
+    expect(out.platforms).toEqual({ contracts: [] });
     // Empty description string treated as absent.
     expect(out.profile).not.toHaveProperty('description');
     // Empty homepage entries + empty repos → empty arrays, not fabricated.
@@ -324,6 +449,39 @@ describe('trending — drop display strings, keep numerics', () => {
 });
 
 describe('global', () => {
+  it('omits a partial sentiment index and handles an absent dominance map', async () => {
+    mockFetchWithTimeout.mockResolvedValueOnce(
+      jsonResponse({
+        data: { total_market_cap: { usd: 0 }, fear_and_greed_index: { value: 1 } },
+      }),
+    );
+    expect(await makeService().global('usd', ctx)).toEqual({ totalMarketCap: 0, dominance: [] });
+  });
+
+  it('preserves all reported dominance and sentiment without fabricating absent totals', async () => {
+    mockFetchWithTimeout.mockResolvedValueOnce(
+      jsonResponse({
+        data: {
+          total_market_cap: { usd: 0 },
+          total_volume: { usd: null },
+          market_cap_percentage: { BTC: 1.23456, eth: 0, usdt: null },
+          ongoing_icos: 0,
+          fear_and_greed_index: { value: 0, sentiment: 'extreme_fear' },
+        },
+      }),
+    );
+    expect(await makeService().global('usd', ctx)).toEqual({
+      totalMarketCap: 0,
+      ethDominance: 0,
+      ongoingIcos: 0,
+      dominance: [
+        { symbol: 'BTC', percentage: 1.23456 },
+        { symbol: 'eth', percentage: 0 },
+      ],
+      fearGreedIndex: { value: 0, sentiment: 'extreme_fear' },
+    });
+  });
+
   it('unwraps data and selects the vs_currency key', async () => {
     mockFetchWithTimeout.mockResolvedValueOnce(
       jsonResponse({
@@ -504,6 +662,40 @@ describe('api-client HTTP error classification', () => {
 });
 
 describe('categoriesList', () => {
+  it('reads market categories in upstream order and preserves sparse fields and zero', async () => {
+    mockFetchWithTimeout.mockResolvedValueOnce(
+      jsonResponse([
+        {
+          id: 'first',
+          name: 'First',
+          market_cap: 0,
+          market_cap_change_24h: 0,
+          volume_24h: 0,
+          top_3_coins_id: ['token'],
+          updated_at: '2026-11-20T00:00:00Z',
+        },
+        { id: 'second', name: 'Second', market_cap: null, top_3_coins_id: [], updated_at: null },
+        { id: 'third', name: 'Third' },
+      ]),
+    );
+    expect(await makeService().categoriesMarket('market_cap_change_24h_asc', ctx)).toEqual([
+      {
+        categoryId: 'first',
+        name: 'First',
+        marketCap: 0,
+        marketCapChange24hPct: 0,
+        volume24h: 0,
+        topCoinIds: ['token'],
+        updatedAt: '2026-11-20T00:00:00Z',
+      },
+      { categoryId: 'second', name: 'Second', topCoinIds: [] },
+      { categoryId: 'third', name: 'Third' },
+    ]);
+    const url = new URL(mockFetchWithTimeout.mock.calls[0]?.[0]);
+    expect(url.pathname).toBe('/api/v3/coins/categories');
+    expect(url.searchParams.get('order')).toBe('market_cap_change_24h_asc');
+  });
+
   it('maps category_id + name', async () => {
     mockFetchWithTimeout.mockResolvedValueOnce(
       jsonResponse([

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "coingecko-mcp-server",
+  "version": "0.2.0",
+  "description": "Market data for 15,000+ cryptocurrencies — prices, history, trends, and deep coin metadata via CoinGecko.",
+  "author": {
+    "name": "cyanheads",
+    "email": "casey@caseyjhand.com",
+    "url": "https://github.com/cyanheads"
+  },
+  "homepage": "https://github.com/cyanheads/coingecko-mcp-server#readme",
+  "repository": "https://github.com/cyanheads/coingecko-mcp-server",
+  "license": "Apache-2.0",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "coingecko",
+    "cryptocurrency",
+    "crypto",
+    "bitcoin",
+    "ethereum",
+    "market-data",
+    "defi",
+    "typescript",
+    "bun",
+    "stdio",
+    "streamable-http"
+  ]
+}

@@ -8,18 +8,21 @@
  */
 
 import type { Context } from '@cyanheads/mcp-ts-core';
-import { notFound } from '@cyanheads/mcp-ts-core/errors';
+import { invalidParams, notFound } from '@cyanheads/mcp-ts-core/errors';
 import { logger, requestContextService, withRetry } from '@cyanheads/mcp-ts-core/utils';
 
 import { getServerConfig } from '@/config/server-config.js';
 import { CoinGeckoApiClient } from './api-client.js';
 import type {
   Category,
+  CategoryMarket,
+  CategoryMarketOrder,
   CoinDetail,
   GlobalMarket,
   MarketChartResult,
   MarketCoin,
   RawCategory,
+  RawCategoryMarket,
   RawCoinDetail,
   RawGlobalResponse,
   RawMarketChart,
@@ -37,6 +40,17 @@ const BASE_DELAY_MS = 1500;
 const TIMEOUT_MS = 15_000;
 const MAX_RETRIES = 3;
 const COIN_DEADLINE_MS = 50_000;
+
+/** Normalize CoinGecko CSV selectors in first-seen order before applying a limit. */
+export function normalizeCsvList(values: string[]): string[] {
+  return [
+    ...new Set(
+      values
+        .flatMap((value) => value.split(',').map((token) => token.trim().toLowerCase()))
+        .filter(Boolean),
+    ),
+  ];
+}
 
 /** Reads `vs_currency` from a per-currency map, treating null as absent. */
 function pickCurrency(
@@ -122,6 +136,41 @@ export class CoinGeckoService {
     }));
   }
 
+  /** Resolve a contract address on one asset platform, preserving address case. */
+  async searchByContract(
+    platform: string,
+    contractAddress: string,
+    ctx: Context,
+  ): Promise<SearchCoin | null> {
+    const normalizedPlatform = platform.trim().toLowerCase();
+    const address = contractAddress.trim();
+    if ([normalizedPlatform, address].some((segment) => segment === '.' || segment === '..')) {
+      throw invalidParams('Supply a platform ID and contract address without URL dot segments.');
+    }
+    const raw = await this.retry('coingecko.searchByContract', ctx, () =>
+      this.client.getJsonOrNull<RawCoinDetail>(
+        'coingecko.searchByContract',
+        `/coins/${encodeURIComponent(normalizedPlatform)}/contract/${encodeURIComponent(address)}`,
+        {
+          localization: false,
+          tickers: false,
+          market_data: false,
+          community_data: false,
+          developer_data: false,
+          sparkline: false,
+        },
+        ctx.signal,
+      ),
+    );
+    if (!raw) return null;
+    return {
+      id: raw.id,
+      symbol: raw.symbol,
+      name: raw.name,
+      ...omitUndefined({ marketCapRank: num(raw.market_cap_rank) }),
+    };
+  }
+
   /**
    * `/simple/price` — batch current price for ids × currencies. Diffs requested
    * ids against returned keys to populate `missing` (silent-miss detection): a
@@ -132,8 +181,11 @@ export class CoinGeckoService {
     vsCurrencies: string[],
     ctx: Context,
   ): Promise<SimplePriceResult> {
-    ids = [...new Set(ids.map((id) => id.trim().toLowerCase()))];
-    vsCurrencies = [...new Set(vsCurrencies.map((currency) => currency.trim().toLowerCase()))];
+    ids = normalizeCsvList(ids);
+    vsCurrencies = normalizeCsvList(vsCurrencies);
+    if (!ids.length || !vsCurrencies.length) {
+      throw invalidParams('Supply at least one coin ID and one quote currency.');
+    }
     const raw = await this.retry('coingecko.simplePrice', ctx, () =>
       this.client.getJson<RawSimplePrice>(
         'coingecko.simplePrice',
@@ -157,22 +209,22 @@ export class CoinGeckoService {
     for (const [id, entry] of Object.entries(raw)) {
       if (!entry || typeof entry !== 'object') continue;
       returnedIds.add(id);
-      if (typeof entry.last_updated_at === 'number') lastUpdatedAt = entry.last_updated_at;
+      const timestamp = num(entry.last_updated_at);
       for (const currency of vsCurrencies) {
         const price = entry[currency];
         if (typeof price !== 'number') continue; // bad currency drops its key silently
+        if (timestamp !== undefined) {
+          lastUpdatedAt = Math.min(lastUpdatedAt ?? timestamp, timestamp);
+        }
         rows.push({
           id,
           currency,
           price,
-          ...(typeof entry[`${currency}_market_cap`] === 'number' && {
-            marketCap: entry[`${currency}_market_cap`],
-          }),
-          ...(typeof entry[`${currency}_24h_vol`] === 'number' && {
-            vol24h: entry[`${currency}_24h_vol`],
-          }),
-          ...(typeof entry[`${currency}_24h_change`] === 'number' && {
-            change24h: entry[`${currency}_24h_change`],
+          ...omitUndefined({
+            lastUpdatedAtUnixSec: timestamp,
+            marketCap: num(entry[`${currency}_market_cap`]),
+            vol24h: num(entry[`${currency}_24h_vol`]),
+            change24h: num(entry[`${currency}_24h_change`]),
           }),
         });
       }
@@ -200,11 +252,11 @@ export class CoinGeckoService {
     },
     ctx: Context,
   ): Promise<MarketCoin[] | null> {
+    const ids = params.ids && normalizeCsvList(params.ids);
+    if (ids?.length === 0) throw invalidParams('Supply at least one coin ID.');
     const query = {
       vs_currency: params.vsCurrency.trim().toLowerCase(),
-      ...(params.ids && {
-        ids: [...new Set(params.ids.map((id) => id.trim().toLowerCase()))].join(','),
-      }),
+      ...(ids && { ids: ids.join(',') }),
       order: params.order,
       ...(params.category && { category: params.category }),
       page: params.page,
@@ -343,11 +395,29 @@ export class CoinGeckoService {
     const atlPrice = pickCurrency(md?.atl, currency);
     const athDate = pickDate(md?.ath_date, currency);
     const atlDate = pickDate(md?.atl_date, currency);
+    const platforms = raw.platforms ?? {};
+    const detailPlatforms = raw.detail_platforms ?? {};
+    const contracts: CoinDetail['platforms']['contracts'] = [];
+    for (const platform of new Set([...Object.keys(platforms), ...Object.keys(detailPlatforms)])) {
+      if (!platform.trim()) continue;
+      const detail = detailPlatforms[platform];
+      const contractAddress = detail?.contract_address?.trim() || platforms[platform]?.trim();
+      if (!contractAddress) continue;
+      contracts.push({
+        platform,
+        contractAddress,
+        ...omitUndefined({ decimalPlace: num(detail?.decimal_place) }),
+      });
+    }
 
     return {
       id: raw.id,
       symbol: raw.symbol,
       name: raw.name,
+      platforms: {
+        contracts,
+        ...omitUndefined({ assetPlatformId: str(raw.asset_platform_id) }),
+      },
       profile: {
         categories,
         ...omitUndefined({
@@ -383,6 +453,10 @@ export class CoinGeckoService {
         ...omitUndefined({
           currentPrice: pickCurrency(md?.current_price, currency),
           marketCap: pickCurrency(md?.market_cap, currency),
+          marketCapRank: num(raw.market_cap_rank),
+          totalVolume: pickCurrency(md?.total_volume, currency),
+          high24h: pickCurrency(md?.high_24h, currency),
+          low24h: pickCurrency(md?.low_24h, currency),
           fullyDilutedValuation: pickCurrency(md?.fully_diluted_valuation, currency),
           circulatingSupply: num(md?.circulating_supply),
           totalSupply: num(md?.total_supply),
@@ -532,17 +606,27 @@ export class CoinGeckoService {
         },
       });
     }
+    const dominance = Object.entries(d.market_cap_percentage ?? {}).flatMap(
+      ([symbol, percentage]) => (typeof percentage === 'number' ? [{ symbol, percentage }] : []),
+    );
+    const value = num(d.fear_and_greed_index?.value);
+    const sentiment = str(d.fear_and_greed_index?.sentiment);
     return {
       totalMarketCap,
-      totalVolume24h: d.total_volume?.[currency] ?? 0,
-      btcDominance: d.market_cap_percentage?.btc ?? 0,
-      ethDominance: d.market_cap_percentage?.eth ?? 0,
-      activeCryptocurrencies: d.active_cryptocurrencies ?? 0,
-      markets: d.markets ?? 0,
-      ongoingIcos: d.ongoing_icos ?? 0,
-      marketCapChangePercentage24h: d.market_cap_change_percentage_24h_usd ?? 0,
-      volumeChangePercentage24h: d.volume_change_percentage_24h_usd ?? 0,
-      updatedAtUnixSec: d.updated_at ?? 0,
+      dominance,
+      ...omitUndefined({
+        totalVolume24h: pickCurrency(d.total_volume, currency),
+        btcDominance: num(d.market_cap_percentage?.btc),
+        ethDominance: num(d.market_cap_percentage?.eth),
+        activeCryptocurrencies: num(d.active_cryptocurrencies),
+        markets: num(d.markets),
+        ongoingIcos: num(d.ongoing_icos),
+        marketCapChangePercentage24h: num(d.market_cap_change_percentage_24h_usd),
+        volumeChangePercentage24h: num(d.volume_change_percentage_24h_usd),
+        updatedAtUnixSec: num(d.updated_at),
+        fearGreedIndex:
+          value !== undefined && sentiment !== undefined ? { value, sentiment } : undefined,
+      }),
     };
   }
 
@@ -557,6 +641,29 @@ export class CoinGeckoService {
       ),
     );
     return raw.map((c) => ({ categoryId: c.category_id, name: c.name }));
+  }
+
+  /** `/coins/categories` — aggregate category metrics in upstream order. */
+  async categoriesMarket(order: CategoryMarketOrder, ctx: Context): Promise<CategoryMarket[]> {
+    const raw = await this.retry('coingecko.categoriesMarket', ctx, () =>
+      this.client.getJson<RawCategoryMarket[]>(
+        'coingecko.categoriesMarket',
+        '/coins/categories',
+        { order },
+        ctx.signal,
+      ),
+    );
+    return raw.map((category) => ({
+      categoryId: category.id,
+      name: category.name,
+      ...omitUndefined({
+        marketCap: num(category.market_cap),
+        marketCapChange24hPct: num(category.market_cap_change_24h),
+        volume24h: num(category.volume_24h),
+        updatedAt: str(category.updated_at),
+        topCoinIds: category.top_3_coins_id ?? undefined,
+      }),
+    }));
   }
 }
 

@@ -6,8 +6,9 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
+import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 
-import { getCoinGeckoService } from '@/services/coingecko/coingecko-service.js';
+import { getCoinGeckoService, normalizeCsvList } from '@/services/coingecko/coingecko-service.js';
 import { COINGECKO_SERVICE_ERRORS } from '@/services/coingecko/error-contracts.js';
 import { COINGECKO_ATTRIBUTION } from '@/services/coingecko/types.js';
 
@@ -18,6 +19,12 @@ export const listMarketsTool = tool('coingecko_list_markets', {
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
 
   errors: [
+    {
+      reason: 'empty_selector',
+      code: JsonRpcErrorCode.ValidationError,
+      when: 'The supplied IDs contain no slugs after comma splitting and trimming.',
+      recovery: 'Supply at least one CoinGecko slug or omit ids for all coins.',
+    },
     {
       reason: 'conflicting_filters',
       code: JsonRpcErrorCode.ValidationError,
@@ -37,12 +44,12 @@ export const listMarketsTool = tool('coingecko_list_markets', {
 
   input: z.object({
     ids: z
-      .array(z.string().trim().toLowerCase().min(1))
+      .array(z.string())
       .min(1)
       .max(500)
       .optional()
       .describe(
-        'Optional coin slugs; cannot be combined with category. First 250 unique normalized IDs are processed; accepts up to 500 raw entries and discloses skipped IDs separately.',
+        'Optional coin slugs, as separate or comma-separated entries. Cannot be combined with category. First 250 unique normalized IDs are processed; accepts up to 500 raw entries and discloses skipped IDs separately.',
       ),
     vs_currency: z
       .string()
@@ -159,6 +166,10 @@ export const listMarketsTool = tool('coingecko_list_markets', {
       .array(z.string())
       .optional()
       .describe('IDs skipped beyond the 250 unique-ID processing cap; not missing coins.'),
+    notReturnedIds: z
+      .array(z.string())
+      .optional()
+      .describe('Applied IDs with no market row when page 1 is shorter than per_page.'),
     truncated: z
       .boolean()
       .optional()
@@ -178,8 +189,16 @@ export const listMarketsTool = tool('coingecko_list_markets', {
   },
 
   enrichmentTrailer: {
-    appliedIds: { render: (ids) => (ids ? `**Applied IDs:** ${ids.join(', ')}` : '') },
-    skippedIds: { render: (ids) => (ids ? `**Skipped IDs:** ${ids.join(', ')}` : '') },
+    appliedIds: {
+      render: (ids) => (ids ? `**Applied IDs:** ${ids.map(escapeMarkdownInline).join(', ')}` : ''),
+    },
+    skippedIds: {
+      render: (ids) => (ids ? `**Skipped IDs:** ${ids.map(escapeMarkdownInline).join(', ')}` : ''),
+    },
+    notReturnedIds: {
+      render: (ids) =>
+        ids ? `**IDs without a row:** ${ids.map(escapeMarkdownInline).join(', ')}` : '',
+    },
   },
 
   async handler(input, ctx) {
@@ -189,7 +208,8 @@ export const listMarketsTool = tool('coingecko_list_markets', {
         'ids and category cannot be combined: CoinGecko ignores the IDs when a category is supplied.',
       );
     }
-    const uniqueIds = input.ids ? [...new Set(input.ids)] : undefined;
+    const uniqueIds = input.ids && normalizeCsvList(input.ids);
+    if (uniqueIds?.length === 0) throw ctx.fail('empty_selector');
     const ids = uniqueIds?.slice(0, 250);
     const skippedIds = uniqueIds?.slice(250) ?? [];
     ctx.log.info('coingecko_list_markets', {
@@ -228,6 +248,16 @@ export const listMarketsTool = tool('coingecko_list_markets', {
       ...(input.category && { appliedCategory: input.category }),
     });
     const notices: string[] = [];
+    if (ids && input.page === 1 && coins.length < input.per_page) {
+      const returnedIds = new Set(coins.map((coin) => coin.id));
+      const notReturnedIds = ids.filter((id) => !returnedIds.has(id));
+      if (notReturnedIds.length > 0) {
+        ctx.enrich({ notReturnedIds });
+        notices.push(
+          'These IDs have no row in this market selection. Search with coingecko_search_coins or check quotes with coingecko_get_prices.',
+        );
+      }
+    }
     if (skippedIds.length > 0)
       notices.push(
         `Processed the first 250 unique IDs; ${skippedIds.length} IDs were skipped beyond the cap.`,

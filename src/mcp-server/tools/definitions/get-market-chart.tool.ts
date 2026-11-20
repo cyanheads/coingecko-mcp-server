@@ -64,7 +64,7 @@ const PointSchema = z
 export const getMarketChartTool = tool('coingecko_get_market_chart', {
   title: 'coingecko-mcp-server: get market chart',
   description:
-    'Historical price, market cap, and volume in exact point pages (100 per series by default, cap 250). Recent mode accepts up to 365 days; range accepts Unix-second from/to. Choose auto, daily, or hourly interval subject to upstream availability. Cadence is measured from returned timestamps. Subsequent pages refetch upstream data and may shift. Resolve coin slugs with coingecko_search_coins. Chart timestamps are milliseconds.',
+    'Historical price, market cap, and volume in exact point pages (100 per series by default, cap 250). Recent mode accepts up to 365 days. Range mode accepts Unix-second from/to and is inferred when only a complete pair is supplied. The result reports the applied window. Choose auto, daily, or hourly interval subject to upstream availability. Cadence is measured from returned timestamps. Subsequent pages refetch upstream data and may shift. Resolve coin slugs with coingecko_search_coins. Chart timestamps are milliseconds.',
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
 
   errors: [
@@ -103,9 +103,9 @@ export const getMarketChartTool = tool('coingecko_get_market_chart', {
       .describe('Currency to denominate the series in. Single currency; defaults to "usd".'),
     mode: z
       .enum(['recent', 'range'])
-      .default('recent')
+      .optional()
       .describe(
-        'recent: last N days (use days). range: explicit window (use from and to as Unix seconds).',
+        'recent: last N days (use days). range: explicit window (use from and to as Unix seconds). Omit to infer range from both endpoints without days; otherwise uses recent.',
       ),
     days: z
       .union([
@@ -149,6 +149,10 @@ export const getMarketChartTool = tool('coingecko_get_market_chart', {
   output: z.object({
     id: z.string().describe('CoinGecko slug the series is for.'),
     vsCurrency: z.string().describe('Currency the series is denominated in.'),
+    mode: z.enum(['recent', 'range']).describe('Applied history mode.'),
+    days: z.number().optional().describe('Applied lookback in days, present in recent mode.'),
+    from: z.number().optional().describe('Applied start in Unix seconds, present in range mode.'),
+    to: z.number().optional().describe('Applied end in Unix seconds, present in range mode.'),
     granularity: z
       .enum(['5-minute', 'hourly', 'daily', 'irregular', 'unknown'])
       .describe(
@@ -183,23 +187,32 @@ export const getMarketChartTool = tool('coingecko_get_market_chart', {
   },
 
   async handler(input, ctx) {
-    ctx.log.info('coingecko_get_market_chart', { id: input.id, mode: input.mode });
+    const mode =
+      input.mode ??
+      (input.days === undefined && input.from !== undefined && input.to !== undefined
+        ? 'range'
+        : 'recent');
+    ctx.log.info('coingecko_get_market_chart', { id: input.id, mode });
     const svc = getCoinGeckoService();
 
     let chart: Awaited<ReturnType<typeof svc.marketChart>>;
+    let window: { mode: 'range'; from: number; to: number } | { mode: 'recent'; days: number };
+    const ignoredFields: string[] = [];
 
-    if (input.mode === 'range') {
+    if (mode === 'range') {
       if (input.from == null || input.to == null || input.from > input.to) {
         throw ctx.fail(
           'invalid_range',
           'mode=range requires from and to in chronological order (Unix seconds).',
         );
       }
+      window = { mode, from: input.from, to: input.to };
+      if (input.days !== undefined) ignoredFields.push('days');
       chart = await svc.marketChartRange(
         input.id,
         input.vs_currency,
-        input.from,
-        input.to,
+        window.from,
+        window.to,
         ctx,
         input.interval,
       );
@@ -207,13 +220,10 @@ export const getMarketChartTool = tool('coingecko_get_market_chart', {
       if (input.days == null) {
         throw ctx.fail('invalid_range', 'mode=recent requires days.');
       }
-      chart = await svc.marketChart(
-        input.id,
-        input.vs_currency,
-        input.days === 'max' ? 365 : input.days,
-        ctx,
-        input.interval,
-      );
+      window = { mode, days: input.days === 'max' ? 365 : input.days };
+      if (input.from !== undefined) ignoredFields.push('from');
+      if (input.to !== undefined) ignoredFields.push('to');
+      chart = await svc.marketChart(input.id, input.vs_currency, window.days, ctx, input.interval);
     }
 
     if (!chart) {
@@ -231,7 +241,9 @@ export const getMarketChartTool = tool('coingecko_get_market_chart', {
     ];
     if (input.point_limit > 250)
       notices.push('Requested point_limit exceeds the effective cap of 250 per series.');
-    if (input.days === 'max' && input.mode === 'recent')
+    if (ignoredFields.length > 0)
+      notices.push(`Ignored window fields: ${ignoredFields.join(', ')}.`);
+    if (input.days === 'max' && mode === 'recent')
       notices.push('days="max" uses the 365-day keyless/Demo history window.');
     if (input.point_offset >= total)
       notices.push('This page contains no points; use point_offset=0 or revise the window.');
@@ -240,6 +252,7 @@ export const getMarketChartTool = tool('coingecko_get_market_chart', {
     return {
       id: input.id,
       vsCurrency: input.vs_currency,
+      ...window,
       ...cadence(chart.prices),
       pricePointTotal: chart.prices.length,
       marketCapPointTotal: chart.marketCaps.length,
@@ -258,6 +271,7 @@ export const getMarketChartTool = tool('coingecko_get_market_chart', {
   format: (result) => {
     const lines = [
       `## ${result.id} — market chart (${result.vsCurrency})`,
+      `**Window:** ${result.mode}${result.days === undefined ? '' : `, ${result.days} days`}${result.from === undefined || result.to === undefined ? '' : `, ${result.from} to ${result.to} (Unix seconds)`}`,
       `**Granularity:** ${result.granularity} | **Points:** ${result.pointCount}`,
       `**Original totals:** prices ${result.pricePointTotal}, market caps ${result.marketCapPointTotal}, volumes ${result.volumePointTotal}`,
       `**Point offset:** ${result.pointOffset} | **Point limit:** ${result.pointLimit}`,

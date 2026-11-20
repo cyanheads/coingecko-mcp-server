@@ -8,7 +8,7 @@
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 
-import { getCoinGeckoService } from '@/services/coingecko/coingecko-service.js';
+import { getCoinGeckoService, normalizeCsvList } from '@/services/coingecko/coingecko-service.js';
 import { COINGECKO_SERVICE_ERRORS } from '@/services/coingecko/error-contracts.js';
 import { COINGECKO_ATTRIBUTION } from '@/services/coingecko/types.js';
 
@@ -19,6 +19,12 @@ export const getPricesTool = tool('coingecko_get_prices', {
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
 
   errors: [
+    {
+      reason: 'empty_selector',
+      code: JsonRpcErrorCode.ValidationError,
+      when: 'The supplied IDs or currencies contain no values after comma splitting and trimming.',
+      recovery: 'Supply at least one CoinGecko slug and one quote currency.',
+    },
     {
       reason: 'no_price_data',
       code: JsonRpcErrorCode.NotFound,
@@ -38,17 +44,19 @@ export const getPricesTool = tool('coingecko_get_prices', {
 
   input: z.object({
     ids: z
-      .array(z.string().trim().toLowerCase().min(1))
+      .array(z.string())
       .min(1)
       .max(500)
       .describe(
-        'CoinGecko slugs to price (e.g. ["bitcoin","ethereum"]). Accepts up to 500 raw entries; the first 250 unique normalized IDs are processed and the rest disclosed as skipped. Resolve tickers with coingecko_search_coins.',
+        'CoinGecko slugs to price, as separate or comma-separated entries (e.g. ["bitcoin","ethereum"]). Accepts up to 500 raw entries; the first 250 unique normalized IDs are processed and the rest disclosed as skipped. Resolve tickers with coingecko_search_coins.',
       ),
     vs_currencies: z
-      .array(z.string().trim().toLowerCase().min(1))
+      .array(z.string())
       .min(1)
       .default(['usd'])
-      .describe('Currency codes to price against (e.g. ["usd","eur","btc"]). Defaults to ["usd"].'),
+      .describe(
+        'Currency codes to price against, as separate or comma-separated entries (e.g. ["usd","eur","btc"]). Defaults to ["usd"].',
+      ),
   }),
 
   output: z.object({
@@ -59,6 +67,10 @@ export const getPricesTool = tool('coingecko_get_prices', {
             id: z.string().describe('CoinGecko slug.'),
             currency: z.string().describe('Currency code this row is denominated in.'),
             price: z.number().describe('Current price in the row currency.'),
+            lastUpdatedAtUnixSec: z
+              .number()
+              .optional()
+              .describe('Upstream last-updated time for this coin, in Unix seconds.'),
             marketCap: z
               .number()
               .optional()
@@ -83,9 +95,7 @@ export const getPricesTool = tool('coingecko_get_prices', {
     lastUpdatedAtUnixSec: z
       .number()
       .optional()
-      .describe(
-        'Upstream last-updated time as a Unix timestamp in seconds (note: market-chart timestamps are milliseconds).',
-      ),
+      .describe('Oldest reported last-updated time among returned quote rows, in Unix seconds.'),
     attribution: z.string().describe('Required data-source attribution.'),
   }),
 
@@ -111,10 +121,11 @@ export const getPricesTool = tool('coingecko_get_prices', {
       idCount: input.ids.length,
       currencies: input.vs_currencies,
     });
-    const uniqueIds = [...new Set(input.ids)];
+    const uniqueIds = normalizeCsvList(input.ids);
+    const currencies = normalizeCsvList(input.vs_currencies);
+    if (uniqueIds.length === 0 || currencies.length === 0) throw ctx.fail('empty_selector');
     const ids = uniqueIds.slice(0, 250);
     const skippedIds = uniqueIds.slice(250);
-    const currencies = [...new Set(input.vs_currencies)];
     const result = await getCoinGeckoService().simplePrice(ids, currencies, ctx);
 
     if (result.missing.length === ids.length) {
@@ -172,13 +183,17 @@ export const getPricesTool = tool('coingecko_get_prices', {
       if (r.marketCap != null) parts.push(`cap ${r.marketCap}`);
       if (r.vol24h != null) parts.push(`vol24h ${r.vol24h}`);
       if (r.change24h != null) parts.push(`24h ${r.change24h}%`);
+      if (r.lastUpdatedAtUnixSec !== undefined)
+        parts.push(`updated ${r.lastUpdatedAtUnixSec} (Unix seconds)`);
       lines.push(`- ${parts.join(' · ')}`);
     }
     if (result.missing.length > 0) {
       lines.push(`\n**Missing (no data):** ${result.missing.join(', ')}`);
     }
     if (result.lastUpdatedAtUnixSec != null) {
-      lines.push(`\n_Last updated: ${result.lastUpdatedAtUnixSec} (Unix seconds)_`);
+      lines.push(
+        `\n_Oldest returned quote timestamp: ${result.lastUpdatedAtUnixSec} (Unix seconds)_`,
+      );
     }
     lines.push(`\n_${result.attribution}_`);
     return [{ type: 'text', text: lines.join('\n') }];

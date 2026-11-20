@@ -1,6 +1,6 @@
 # coingecko-mcp-server - Directory Structure
 
-Generated on: 2026-10-15 12:00:51
+Generated on: 2026-11-20 22:03:55
 
 ```text
 coingecko-mcp-server/
@@ -37,6 +37,8 @@ coingecko-mcp-server/
 │   ├── add-resource/
 │   │   └── SKILL.md
 │   ├── add-service/
+│   │   └── SKILL.md
+│   ├── add-skill/
 │   │   └── SKILL.md
 │   ├── add-test/
 │   │   └── SKILL.md
@@ -134,6 +136,9 @@ coingecko-mcp-server/
 │   ├── prune-musl-packages.ts
 │   ├── release-github.ts
 │   └── tree.ts
+├── skills/
+│   └── coingecko-guide/
+│       └── SKILL.md
 ├── src/
 │   ├── config/
 │   │   └── server-config.ts
@@ -167,7 +172,9 @@ coingecko-mcp-server/
 │   │   └── server-config.test.ts
 │   ├── mcp-server/
 │   │   └── tools/
-│   │       └── coingecko-tools.test.ts
+│   │       ├── coin-global.test.ts
+│   │       ├── coingecko-tools.test.ts
+│   │       └── market-contracts.test.ts
 │   ├── prompts/
 │   ├── resources/
 │   ├── services/
@@ -190,7 +197,9 @@ coingecko-mcp-server/
 ├── Dockerfile
 ├── LICENSE
 ├── manifest.json
+├── mcp.json
 ├── package.json
+├── plugin.json
 ├── README.md
 ├── server.json
 ├── tsconfig.build.json

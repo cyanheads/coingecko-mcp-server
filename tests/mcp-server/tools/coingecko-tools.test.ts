@@ -23,7 +23,8 @@ const svc = {
   categoriesList: vi.fn(),
 };
 
-vi.mock('@/services/coingecko/coingecko-service.js', () => ({
+vi.mock('@/services/coingecko/coingecko-service.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/coingecko/coingecko-service.js')>()),
   getCoinGeckoService: () => svc,
 }));
 
@@ -82,11 +83,12 @@ describe('coingecko_get_prices', () => {
     expect(getPricesTool.input.safeParse({ ids: [...ids, 'c500'] }).success).toBe(false);
   });
 
-  it('rejects blank normalized entries (#13)', () => {
-    expect(getPricesTool.input.safeParse({ ids: [' '] }).success).toBe(false);
-    expect(getPricesTool.input.safeParse({ ids: ['bitcoin'], vs_currencies: [' '] }).success).toBe(
-      false,
-    );
+  it('rejects lists without a usable ID or currency before fetching (#13)', async () => {
+    for (const input of [{ ids: [' '] }, { ids: ['bitcoin'], vs_currencies: [' '] }]) {
+      const run = await runToolContract(getPricesTool, input);
+      expect(run.structuredContent?.error).toMatchObject({ data: { reason: 'empty_selector' } });
+    }
+    expect(svc.simplePrice).not.toHaveBeenCalled();
   });
 
   it('uses no_price_data for a resolved coin without quotes (#13)', async () => {
@@ -405,7 +407,7 @@ describe('coingecko_list_categories', () => {
     expect(getEnrichment(ctx).totalCount).toBe(3);
   });
 
-  it('filters by strict token match on the display name', async () => {
+  it('filters by word prefix on the display name', async () => {
     svc.categoriesList.mockResolvedValueOnce(cats);
     const ctx = createMockContext();
     const input = listCategoriesTool.input.parse({ name_contains: 'defi' });
@@ -734,7 +736,7 @@ describe('coingecko_get_market_chart', () => {
 
 describe('coingecko_get_trending / get_global passthrough', () => {
   it('normalizes global currency (#13)', async () => {
-    svc.global.mockResolvedValueOnce({});
+    svc.global.mockResolvedValueOnce({ dominance: [] });
     const ctx = createMockContext();
     await getGlobalTool.handler(getGlobalTool.input.parse({ vs_currency: ' USD ' }), ctx);
     expect(svc.global).toHaveBeenCalledWith('usd', ctx);
@@ -758,6 +760,7 @@ describe('coingecko_get_trending / get_global passthrough', () => {
       totalVolume24h: 2,
       btcDominance: 50,
       ethDominance: 10,
+      dominance: [],
       activeCryptocurrencies: 100,
       markets: 200,
       ongoingIcos: 0,
@@ -786,6 +789,7 @@ describe('format() does not throw on representative output', () => {
         totalVolume24h: 2,
         btcDominance: 50,
         ethDominance: 10,
+        dominance: [],
         activeCryptocurrencies: 1,
         markets: 1,
         ongoingIcos: 0,

@@ -35,11 +35,12 @@ await createApp({
   ],
   resources: [coinResource, globalResource],
   prompts: [coinResearchPrompt],
+  skills: 'skills',
   // No tool calls ctx.requestInput and nothing is held per session, so HTTP
   // serves stateless. An explicit MCP_SESSION_MODE still overrides this.
   sessionMode: 'stateless',
   instructions:
-    'Cryptocurrency market data from CoinGecko (v3 REST API). CoinGecko keys all data by slug (bitcoin, ethereum), NOT by ticker (BTC, ETH) — and tickers are not unique. Resolve any name or ticker to a slug with coingecko_search_coins FIRST, then chain the returned id into the ID-keyed tools (coingecko_get_prices, coingecko_get_coin, coingecko_get_market_chart, coingecko_list_markets). coingecko_get_prices reports partial unresolved IDs in missing; all unresolved IDs or resolved coins without numeric quotes produce distinct errors. Data refreshes ~every 60s (not tick-level). Runs keyless by default; set COINGECKO_API_KEY for a higher rate ceiling. Data provided by CoinGecko.',
+    'Cryptocurrency market data from CoinGecko. Pass known CoinGecko slugs (bitcoin, ethereum) directly to price, coin, chart, and market tools. Use coingecko_search_coins to resolve names, tickers, or a platform-specific token contract. Tickers can match multiple coins. Use coingecko_list_categories to resolve category names for market filters. CoinGecko data refreshes roughly once a minute. The server runs keyless by default. Set COINGECKO_API_KEY to use CoinGecko’s Demo tier. Data provided by CoinGecko.',
   landing: {
     requireAuth: false,
     tagline:

@@ -1,23 +1,32 @@
 /**
  * @fileoverview coingecko_get_coin — deep profile for a single coin (description,
- * categories, links, full market data, developer activity, community stats,
- * sentiment). The full record is large; `sections` trims it to what's needed.
+ * categories, links, contract platforms, market data, developer activity,
+ * community stats, sentiment). Use `sections` to select parts of the record.
  * @module src/mcp-server/tools/definitions/get-coin.tool
  */
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
+import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 
 import { getCoinGeckoService } from '@/services/coingecko/coingecko-service.js';
 import { COINGECKO_SERVICE_ERRORS } from '@/services/coingecko/error-contracts.js';
 import { COINGECKO_ATTRIBUTION } from '@/services/coingecko/types.js';
 
-const SECTIONS = ['profile', 'market', 'links', 'developer', 'community', 'sentiment'] as const;
+const SECTIONS = [
+  'profile',
+  'market',
+  'links',
+  'platforms',
+  'developer',
+  'community',
+  'sentiment',
+] as const;
 
 export const getCoinTool = tool('coingecko_get_coin', {
   title: 'coingecko-mcp-server: get coin',
   description:
-    'Deep profile for a single coin: description, categories, genesis date, homepage/whitepaper/repo/social links, full market data (price, cap, supply, ATH/ATL, multi-window price change), developer activity (GitHub stars/forks/commits), community stats, and sentiment vote split. The full picture for "tell me everything about Ethereum". The id must be a CoinGecko slug (resolve tickers with coingecko_search_coins). Use sections to fetch only part of the large record. Note: categories here are display names (e.g. "Layer 1 (L1)"), not the category_id slugs from coingecko_list_categories.',
+    'Deep profile for a CoinGecko slug: identity, links, platform contract addresses, market prices and volume, supply, ATH/ATL, multi-window price change, and developer, community, or sentiment metrics when CoinGecko supplies them. Use sections to select parts of the response. Resolve names, tickers, and contract addresses with coingecko_search_coins. Categories here are display names (e.g. "Layer 1 (L1)"). Use coingecko_list_categories for category IDs.',
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
 
   errors: [
@@ -61,7 +70,7 @@ export const getCoinTool = tool('coingecko_get_coin', {
       .array(z.enum(SECTIONS))
       .optional()
       .describe(
-        'Subset of sections to return: profile, market, links, developer, community, sentiment. Omit for all sections.',
+        'Subset of sections to return: profile, market, links, platforms, developer, community, sentiment. Omit for all sections.',
       ),
   }),
 
@@ -99,6 +108,16 @@ export const getCoinTool = tool('coingecko_get_coin', {
           .number()
           .optional()
           .describe('Market capitalization in vs_currency, when available.'),
+        marketCapRank: z.number().optional().describe('Global market-cap rank, when available.'),
+        totalVolume: z
+          .number()
+          .optional()
+          .describe('24-hour trading volume in vs_currency, when available.'),
+        high24h: z
+          .number()
+          .optional()
+          .describe('24-hour high price in vs_currency, when available.'),
+        low24h: z.number().optional().describe('24-hour low price in vs_currency, when available.'),
         fullyDilutedValuation: z
           .number()
           .optional()
@@ -152,6 +171,33 @@ export const getCoinTool = tool('coingecko_get_coin', {
       })
       .optional()
       .describe('Official and social links. Present when the links section is requested.'),
+    platforms: z
+      .object({
+        assetPlatformId: z
+          .string()
+          .optional()
+          .describe('Primary CoinGecko asset platform ID, when available.'),
+        contracts: z
+          .array(
+            z
+              .object({
+                platform: z.string().describe('CoinGecko asset platform ID.'),
+                contractAddress: z
+                  .string()
+                  .describe('Token contract address in its original casing.'),
+                decimalPlace: z
+                  .number()
+                  .optional()
+                  .describe('Token decimal precision, when available.'),
+              })
+              .describe('A contract for this coin on one platform.'),
+          )
+          .describe('Platform-specific contracts. Empty when no contracts are listed.'),
+      })
+      .optional()
+      .describe(
+        'Asset platform and contract details. Present when the platforms section is requested.',
+      ),
     developer: z
       .object({
         stars: z.number().optional().describe('GitHub stars, when available.'),
@@ -208,6 +254,7 @@ export const getCoinTool = tool('coingecko_get_coin', {
       ...(want.has('profile') && { profile: detail.profile }),
       ...(want.has('market') && { market: detail.market }),
       ...(want.has('links') && { links: detail.links }),
+      ...(want.has('platforms') && { platforms: detail.platforms }),
       ...(want.has('developer') && { developer: detail.developer }),
       ...(want.has('community') && { community: detail.community }),
       ...(want.has('sentiment') && { sentiment: detail.sentiment }),
@@ -233,6 +280,10 @@ export const getCoinTool = tool('coingecko_get_coin', {
       lines.push('\n## Market');
       if (m.currentPrice != null) lines.push(`**Price:** ${m.currentPrice}`);
       if (m.marketCap != null) lines.push(`**Market cap:** ${m.marketCap}`);
+      if (m.marketCapRank != null) lines.push(`**Market-cap rank:** ${m.marketCapRank}`);
+      if (m.totalVolume != null) lines.push(`**24h volume:** ${m.totalVolume}`);
+      if (m.high24h != null) lines.push(`**24h high:** ${m.high24h}`);
+      if (m.low24h != null) lines.push(`**24h low:** ${m.low24h}`);
       if (m.fullyDilutedValuation != null)
         lines.push(`**Fully diluted valuation:** ${m.fullyDilutedValuation}`);
       if (m.circulatingSupply != null) lines.push(`**Circulating supply:** ${m.circulatingSupply}`);
@@ -258,6 +309,20 @@ export const getCoinTool = tool('coingecko_get_coin', {
       if (l.subreddit) lines.push(`**Subreddit:** ${l.subreddit}`);
       if (l.twitter) lines.push(`**Twitter:** @${l.twitter}`);
       if (l.telegram) lines.push(`**Telegram:** ${l.telegram}`);
+    }
+
+    if (result.platforms) {
+      lines.push('\n## Platforms');
+      if (result.platforms.assetPlatformId !== undefined)
+        lines.push(`**Asset platform:** ${escapeMarkdownInline(result.platforms.assetPlatformId)}`);
+      if (result.platforms.contracts.length === 0) lines.push('_No contracts listed._');
+      for (const contract of result.platforms.contracts) {
+        const decimals =
+          contract.decimalPlace === undefined ? '' : ` (${contract.decimalPlace} decimals)`;
+        lines.push(
+          `- ${escapeMarkdownInline(contract.platform)}: ${escapeMarkdownInline(contract.contractAddress)}${decimals}`,
+        );
+      }
     }
 
     if (result.developer) {

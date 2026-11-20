@@ -80,10 +80,17 @@ export interface RawMarketCoin {
 export interface RawCoinDetail {
   asset_platform_id?: string | null;
   categories?: (string | null)[];
-  community_data?: RawCommunityData;
+  community_data?: RawCommunityData | null;
   country_origin?: string | null;
   description?: { en?: string } & Record<string, string | undefined>;
-  developer_data?: RawDeveloperData;
+  detail_platforms?: Record<
+    string,
+    {
+      contract_address?: string | null;
+      decimal_place?: number | null;
+    }
+  > | null;
+  developer_data?: RawDeveloperData | null;
   genesis_date?: string | null;
   hashing_algorithm?: string | null;
   id: string;
@@ -92,6 +99,7 @@ export interface RawCoinDetail {
   market_cap_rank?: number | null;
   market_data?: RawCoinMarketData;
   name: string;
+  platforms?: Record<string, string | null> | null;
   sentiment_votes_down_percentage?: number | null;
   sentiment_votes_up_percentage?: number | null;
   symbol: string;
@@ -200,18 +208,19 @@ export interface RawGlobalResponse {
 }
 
 export interface RawGlobalData {
-  active_cryptocurrencies?: number;
+  active_cryptocurrencies?: number | null;
   ended_icos?: number;
+  fear_and_greed_index?: { value?: number | null; sentiment?: string | null } | null;
   /** Always USD-denominated regardless of vs_currency (field name embeds _usd). */
-  market_cap_change_percentage_24h_usd?: number;
-  market_cap_percentage?: Record<string, number>;
-  markets?: number;
-  ongoing_icos?: number;
-  total_market_cap?: Record<string, number>;
-  total_volume?: Record<string, number>;
+  market_cap_change_percentage_24h_usd?: number | null;
+  market_cap_percentage?: Record<string, number | null> | null;
+  markets?: number | null;
+  ongoing_icos?: number | null;
+  total_market_cap?: Record<string, number | null> | null;
+  total_volume?: Record<string, number | null> | null;
   upcoming_icos?: number;
-  updated_at?: number;
-  volume_change_percentage_24h_usd?: number;
+  updated_at?: number | null;
+  volume_change_percentage_24h_usd?: number | null;
 }
 
 /** `/coins/{id}/market_chart` — timestamps are MILLISECONDS. */
@@ -225,6 +234,17 @@ export interface RawMarketChart {
 export interface RawCategory {
   category_id: string;
   name: string;
+}
+
+/** `/coins/categories` → aggregate category data in the requested order. */
+export interface RawCategoryMarket {
+  id: string;
+  market_cap?: number | null;
+  market_cap_change_24h?: number | null;
+  name: string;
+  top_3_coins_id?: string[] | null;
+  updated_at?: string | null;
+  volume_24h?: number | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -248,7 +268,7 @@ export interface PriceEntry {
 }
 
 export interface SimplePriceResult {
-  /** Unix SECONDS. */
+  /** Oldest reported timestamp among returned rows, in Unix seconds. */
   lastUpdatedAt?: number;
   /** Requested ids that were entirely absent from the response. */
   missing: string[];
@@ -260,6 +280,7 @@ export interface SimplePriceResult {
     marketCap?: number;
     vol24h?: number;
     change24h?: number;
+    lastUpdatedAtUnixSec?: number;
   }[];
 }
 
@@ -308,6 +329,10 @@ export interface CoinDetail {
   market: {
     currentPrice?: number;
     marketCap?: number;
+    marketCapRank?: number;
+    totalVolume?: number;
+    high24h?: number;
+    low24h?: number;
     fullyDilutedValuation?: number;
     circulatingSupply?: number;
     totalSupply?: number;
@@ -322,6 +347,10 @@ export interface CoinDetail {
     };
   };
   name: string;
+  platforms: {
+    assetPlatformId?: string;
+    contracts: { platform: string; contractAddress: string; decimalPlace?: number }[];
+  };
   profile: {
     description?: string;
     categories: string[];
@@ -352,16 +381,18 @@ export interface TrendingResult {
 }
 
 export interface GlobalMarket {
-  activeCryptocurrencies: number;
-  btcDominance: number;
-  ethDominance: number;
-  marketCapChangePercentage24h: number;
-  markets: number;
-  ongoingIcos: number;
+  activeCryptocurrencies?: number;
+  btcDominance?: number;
+  dominance: { symbol: string; percentage: number }[];
+  ethDominance?: number;
+  fearGreedIndex?: { value: number; sentiment: string };
+  marketCapChangePercentage24h?: number;
+  markets?: number;
+  ongoingIcos?: number;
   totalMarketCap: number;
-  totalVolume24h: number;
-  updatedAtUnixSec: number;
-  volumeChangePercentage24h: number;
+  totalVolume24h?: number;
+  updatedAtUnixSec?: number;
+  volumeChangePercentage24h?: number;
 }
 
 /** One chart point. `t` is MILLISECONDS (unlike /simple/price seconds). */
@@ -381,4 +412,24 @@ export interface MarketChartResult {
 export interface Category {
   categoryId: string;
   name: string;
+}
+
+/** Sort orders exposed for aggregate category data. */
+export const CATEGORY_MARKET_ORDERS = [
+  'market_cap_desc',
+  'market_cap_asc',
+  'market_cap_change_24h_desc',
+  'market_cap_change_24h_asc',
+] as const;
+
+/** Sort order passed to the CoinGecko categories endpoint. */
+export type CategoryMarketOrder = (typeof CATEGORY_MARKET_ORDERS)[number];
+
+/** An aggregate market snapshot for one CoinGecko category. */
+export interface CategoryMarket extends Category {
+  marketCap?: number;
+  marketCapChange24hPct?: number;
+  topCoinIds?: string[];
+  updatedAt?: string;
+  volume24h?: number;
 }
