@@ -1,6 +1,6 @@
 # coingecko-mcp-server - Directory Structure
 
-Generated on: 2026-11-20 22:03:55
+Generated on: 2026-11-20 22:12:34
 
 ```text
 coingecko-mcp-server/
@@ -26,6 +26,7 @@ coingecko-mcp-server/
 ├── changelog/
 │   ├── 0.1.x/
 │   ├── 0.2.x/
+│   ├── 0.3.x/
 │   └── template.md
 ├── docs/
 │   └── design.md

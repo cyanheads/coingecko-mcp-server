@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.3.0](changelog/0.3.x/0.3.0.md) — 2026-11-20 · ⚠️ Breaking
+
+Contract lookups, sector rankings, and quote freshness
+
 ## [0.2.0](changelog/0.2.x/0.2.0.md) — 2026-10-15 · ⚠️ Breaking
 
 Exact chart pages and currency-aware market data

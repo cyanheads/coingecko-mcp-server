@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "coingecko-mcp-server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Market data for 15,000+ cryptocurrencies — prices, history, trends, and deep coin metadata via CoinGecko.",
   "author": {
     "name": "cyanheads",
